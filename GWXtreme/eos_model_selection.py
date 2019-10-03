@@ -127,7 +127,7 @@ class Model_selection:
                       'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'MPA1', 'MS1B',
                       'MS1B_PP', 'MS1_PP', 'MS1', 'MS2', 'PAL6', 'PCL2', 'PS',
                       'QMC700', 'SLY4', 'SLY', 'SQM1', 'SQM2', 'SQM3', 'WFF1',
-                      'WFF2', 'WFF3', 'APR', 'BHF_BBB2', 'KDE0V', 'KDE0V1',
+		      'WFF2', 'WFF3', 'APR', 'BHF_BBB2', 'KDE0V', 'KDE0V1',
                       'RS', 'SK255', 'SK272', 'SKA', 'SKB', 'SKI2', 'SKI3',
                       'SKI4', 'SKI5', 'SKI6', 'SKMP', 'SKOP', 'SLY2',
                       'SLY230A', 'SLY9', 'HQC18']
@@ -178,6 +178,9 @@ class Model_selection:
         ...		...
 
         max_mass	...
+
+        The values of masses should be in units of solar masses. The tidal
+        deformability λ should be supplies in SI unit.
 
 
         Alternatively one can also give the pressure-energy density relation
@@ -252,8 +255,7 @@ class Model_selection:
 
         if os.path.exists(EoS1):
             [s1, _, _,
-             max_mass_eos1] = self.getEoSInterpFromFile(tidalFile=EoS1,
-                                                        m_min=self.minMass)
+             max_mass_eos1] = self.getEoSInterpFromFile(tidalFile=EoS1)
         else:
             [s1, _, _,
              max_mass_eos1] = self.getEoSInterp(EoS1,
@@ -261,8 +263,7 @@ class Model_selection:
 
         if os.path.exists(EoS2):
             [s2, _, _,
-             max_mass_eos2] = self.getEoSInterpFromFile(tidalFile=EoS2,
-                                                        m_min=self.minMass)
+             max_mass_eos2] = self.getEoSInterpFromFile(tidalFile=EoS2)
         else:
             [s2, _, _,
              max_mass_eos2] = self.getEoSInterp(EoS2,
