@@ -164,55 +164,39 @@ class Model_selection:
         s = interp1d(gravMass, Lambdas)
         return [s, gravMass, Lambdas, max_mass]
 
-    def getEoSInterpFromFile(self, tidalFile):
-        '''
-        The method accepts a text file with columns defining the
-        mass (M_sun) and the dimensionless tidal deformabiliy Λ,
-        and returns a list [s, mass, Λ, max_mass] where s is the
-        interpolation function for the mass and the tidal
-        deformability
-
-        tidalFile       :: Name of the tidal file must be in the
-                           following form:
-                            mass       Λ
-
-                            ...           ...
-
-                            ...	       ...
-
-                            max_mass   ...
-
-        '''
-
-        masses, Lambdas = np.loadtxt(tidalFile, unpack=True)
-
-        max_mass = np.max(masses)
-        self.minMass = np.min(masses)
-        s = interp1d(masses, Lambdas)
-
-        return [s, masses, Lambdas, max_mass]
 
     def getEoSInterpFromFile(self, tidalFile=None, eosFile=None,
                              p_init=1e33, pressurePts=1000):
         '''
         This method accepts the data from a file that can have either the
         tidal deformability information in the following format:
+
         #mass		λ
+
         ...		...
+
         ...		...
+
         max_mass	...
+
 
         Alternatively one can also give the pressure-energy density relation
         in the form of a data file as follows:
+
         #p	ε
+
         ...	...
+
         ...	...
+
         ...	...
+
 
         The method computes the dimensionless tidal deformabiliy Λ and returns
         a list [s, mass, Λ, max_mass] where s is the interpolation function for
         the mass and the tidal deformability
         '''
+
         if tidalFile:
             masses, lambdas = np.loadtxt(tidalFile, unpack=True)
 
