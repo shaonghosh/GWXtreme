@@ -1,11 +1,11 @@
 Auto Generated Documentation
 ============================
 
-.. automodule:: GWXtreme.getPosteriorSupport
+.. automodule:: GWXtreme.eos_model_selection
    :members:
    :show-inheritance:
 
-.. autoclass:: GWXtreme.getPosteriorSupport.GetPosteriorSupport
+.. autoclass:: GWXtreme.eos_model_selection.Model_selection
    :members:
 
    .. automethod:: __init__
