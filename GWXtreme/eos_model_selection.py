@@ -104,7 +104,7 @@ class Model_selection:
                                   yhigh=self.yhigh,
                                   bw=self.bw)
 
-    def getEoSInterp(self, eosname, m_min=1.0, N=50):
+    def getEoSInterp(self, eosname, m_min=1.0, N=100):
         '''
         This method accepts one of the NS native equations of state
         and uses that to return a list [s, mass, Λ, max_mass] where
@@ -164,69 +164,62 @@ class Model_selection:
         s = interp1d(gravMass, Lambdas)
         return [s, gravMass, Lambdas, max_mass]
 
-
-    def getEoSInterpFromFile(self, tidalFile=None, eosFile=None,
-                             p_init=1e33, pressurePts=1000):
+    def getEoSInterpFromMLambdaFile(self, tidalFile):
         '''
-        This method accepts the data from a file that can have either the
+        This method accepts the data from a file that have the
         tidal deformability information in the following format:
 
         #mass		λ
 
-        ...		...
+        ...	    	...
 
-        ...		...
+        ...		    ...
 
         max_mass	...
 
-        The values of masses should be in units of solar masses. The tidal
-        deformability λ should be supplies in SI unit.
+        The values of masses should be in units of solar masses. The
+        tidal deformability λ should be supplied in SI unit.
 
-
-        Alternatively one can also give the pressure-energy density relation
-        in the form of a data file as follows:
-
-        #p	ε
-
-        ...	...
-
-        ...	...
-
-        ...	...
-
-
-        The method computes the dimensionless tidal deformabiliy Λ and returns
-        a list [s, mass, Λ, max_mass] where s is the interpolation function for
-        the mass and the tidal deformability
+        The method computes the dimensionless tidal deformabiliy Λ and
+        returns a list [s, mass, Λ, max_mass] where s is the interpolation
+        function for the mass and the tidal deformability.
         '''
-
-        if tidalFile:
-            masses, lambdas = np.loadtxt(tidalFile, unpack=True)
-
-        elif eosFile:
-            eos_obj = lalsim.SimNeutronStarEOSFromFile(eosFile)
-            max_pressure = lalsim.SimNeutronStarEOSMaxPressure(eos_obj)
-            central_pressures = np.linspace(p_init, max_pressure, pressurePts)
-            radii = []
-            masses = []
-            lambdas = []
-            for pp in central_pressures:
-                result = lalsim.SimNeutronStarTOVODEIntegrate(pp, eos_obj)
-                radii.append(result[0])
-                masses.append(result[1])
-                lambdas.append(result[2])
-
-            masses = np.array(masses)
-            lambdas = np.array(lambdas)
-
-        max_mass = np.max(masses)
-        max_mass = int(max_mass*1000)/1000
-        self.minMass = np.min(masses)  # Redefining when using a file
+        masses, lambdas = np.loadtxt(tidalFile, unpack=True)
+        self.minMass = np.min(masses)
         Lambdas = lal.G_SI*lambdas*(1/(lal.MRSUN_SI*masses)**5)
-        # s = UnivariateSpline(masses, Lambdas, k=3)
         s = interp1d(masses, Lambdas)
-
+        max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
+
+
+    def getEoSInterpFromMRFile(self, MRFile):
+        '''
+        This method accepts the data from a file that have the
+        mass-radius-love deformability information in the following format:
+
+        #mass		Radius       love_num
+
+        ...	    	...          ...
+
+        ...		    ...          ...
+
+        max_mass	...          ...
+
+        The values of masses should be in units of solar masses. The
+        tidal deformability radius should be supplied in meters.
+
+        The method computes the dimensionless tidal deformabiliy Λ and
+        returns a list [s, mass, Λ, max_mass] where s is the interpolation
+        function for the mass and the tidal deformability.
+        '''
+        masses, radius, kappa = np.loadtxt(MRFile, unpack=True)
+        self.minMass = np.min(masses)
+        compactness = masses*lal.MRSUN_SI/radius
+        Lambdas = (2/3)*kappa/(compactness**5)
+        s = interp1d(masses, Lambdas)
+        max_mass = np.max(masses)
+        return [s, masses, Lambdas, max_mass]
+
 
     def computeEvidenceRatio(self, EoS1, EoS2,
                              gridN=1000, trials=0):
@@ -254,16 +247,28 @@ class Model_selection:
         # generate interpolators for both EOS
 
         if os.path.exists(EoS1):
-            [s1, _, _,
-             max_mass_eos1] = self.getEoSInterpFromFile(tidalFile=EoS1)
+            print('Trying m-R-k file to compute EoS interpolant')
+            try:
+                [s1, _, _,
+                 max_mass_eos1] = self.getEoSInterpFromMRFile(EoS1)
+            except ValueError:
+                print('Trying m-λ file to compute EoS interpolant')
+                [s1, _, _,
+                 max_mass_eos1] = self.getEoSInterpFromMLambdaFile(EoS1)
         else:
             [s1, _, _,
              max_mass_eos1] = self.getEoSInterp(EoS1,
                                                 m_min=self.minMass)
 
         if os.path.exists(EoS2):
-            [s2, _, _,
-             max_mass_eos2] = self.getEoSInterpFromFile(tidalFile=EoS2)
+            print('Trying m-R-k file to compute EoS interpolant')
+            try:
+                [s2, _, _,
+                 max_mass_eos2] = self.getEoSInterpFromMRFile(EoS2)
+            except ValueError:
+                print('Trying m-λ file to compute EoS interpolant')
+                [s2, _, _,
+                 max_mass_eos2] = self.getEoSInterpFromMLambdaFile(EoS2)
         else:
             [s2, _, _,
              max_mass_eos2] = self.getEoSInterp(EoS2,
@@ -415,4 +420,3 @@ class Model_selection:
         int_element = f_centers * dq
 
         return [LambdaT_scaled, q_scaled, np.sum(int_element)]
-
