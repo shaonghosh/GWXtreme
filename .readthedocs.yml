@@ -17,5 +17,6 @@ sphinx:
 formats: all
 
 python:
+   version: 3.6
    setup_py_install: true
 
