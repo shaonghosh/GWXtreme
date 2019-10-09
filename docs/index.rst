@@ -115,7 +115,7 @@ of state.
 
   .. code-block:: python
 
-     ap4_sly_bf = ems.computeEvidenceRatio(EoS1='AP4', EoS2='SLY')
+     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1='AP4', EoS2='SLY')
 
   which gives us the bayes-factor between the `AP4` and the `SLY` equations of state. 
 
@@ -130,7 +130,7 @@ of state.
 
   .. code-block:: python
 
-     ap4_sly_bf = ems.computeEvidenceRatio(EoS1='ap4_m_lambda.txt', EoS2='SLY')
+     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1='ap4_m_lambda.txt', EoS2='SLY')
 
   where, once again we are computing the bayes-factor between `AP4` and the `SLY` equations of 
   state, except this time we are obtaining the data for the `AP4` from a user supplied file.
@@ -152,7 +152,7 @@ of state.
 
   .. code-block:: python
 
-     ap4_sly_bf = ems.computeEvidenceRatio(EoS1='ap4_m_r_k.txt', EoS2='SLY')
+     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1='ap4_m_r_k.txt', EoS2='SLY')
 
   Once again it is important to make sure that the referred file exists in the location supplied else
   the method will assume that the name of the file is that of a LALsuite_ tabulated equation of state.
