@@ -8,4 +8,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 - New repository called GWXtreme created. Features imported from
   constraining equation of state repository in git.ligo.org
-- Names of methods changed to more something more idiomatic. 
+- Names of methods changed to more something more idiomatic.
+- Added documentation and readthedocs integration 
