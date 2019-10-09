@@ -3,6 +3,13 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. image:: _static/logo_graphics_2_cropped.jpeg
+   :width: 1000px
+   :height: 150px
+   :scale: 100 %
+   :alt: alternate text
+   :align: left
+
 Documentation of GWXtreme
 =========================
 
