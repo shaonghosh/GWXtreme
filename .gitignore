@@ -1,3 +1,5 @@
 *.pyc
 docs/_build/*
 GWXtreme.egg-info
+build/
+dist/
