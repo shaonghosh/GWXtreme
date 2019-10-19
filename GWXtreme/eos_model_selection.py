@@ -48,6 +48,29 @@ def getLambdaT(m1, m2, Lambda1, Lambda2):
                    (m2**5 + 12*m1*m2**4)*Lambda2
     return LambdaTilde
 
+def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
+    '''
+    This function accepts the masses and an equation of state interpolant
+    with its maximum allowed mass, and return the values of LambdaT.
+    '''
+    kerr_cases_1 = m1 >= max_mass_eos
+    kerr_cases_2 = m2 >= max_mass_eos
+
+    Lambda1 = np.zeros_like(m1)
+    Lambda2 = np.zeros_like(m2)
+
+    # interpolate from known curves to obtain tidal
+    # deformabilities as a function of mass for the
+    # rest of the points
+    Lambda1[~kerr_cases_1] = eosfunc(m1[~kerr_cases_1])
+    Lambda2[~kerr_cases_2] = eosfunc(m2[~kerr_cases_2])
+
+    # compute chirp tidal deformability
+    LambdaT = getLambdaT(m1, m2, Lambda1, Lambda2)
+
+    return LambdaT
+
+
 
 class Model_selection:
     def __init__(self, posteriorFile, priorFile=None):
@@ -104,7 +127,7 @@ class Model_selection:
                                   yhigh=self.yhigh,
                                   bw=self.bw)
 
-    def getEoSInterp(self, eosname, m_min=1.0, N=100):
+    def getEoSInterp(self, eosname=None, m_min=1.0, N=100):
         '''
         This method accepts one of the NS native equations of state
         and uses that to return a list [s, mass, Λ, max_mass] where
@@ -121,23 +144,20 @@ class Model_selection:
                        construction of the interpolant.
         '''
 
-        allowedEoS = ['ALF1', 'ALF2', 'ALF3', 'ALF4', 'AP1', 'AP2', 'AP3',
-                      'AP4', 'APR4_EPP', 'BBB2', 'BGN1H1', 'BPAL12', 'BSK19',
-                      'BSK20', 'BSK21', 'ENG', 'FPS', 'GNH3', 'GS1', 'GS2',
-                      'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'MPA1', 'MS1B',
-                      'MS1B_PP', 'MS1_PP', 'MS1', 'MS2', 'PAL6', 'PCL2', 'PS',
-                      'QMC700', 'SLY4', 'SLY', 'SQM1', 'SQM2', 'SQM3', 'WFF1',
-		      'WFF2', 'WFF3', 'APR', 'BHF_BBB2', 'KDE0V', 'KDE0V1',
-                      'RS', 'SK255', 'SK272', 'SKA', 'SKB', 'SKI2', 'SKI3',
-                      'SKI4', 'SKI5', 'SKI6', 'SKMP', 'SKOP', 'SLY2',
-                      'SLY230A', 'SLY9', 'HQC18']
-
+        if eosname is None:
+            print('Allowed equation of state models are:')
+            print(lalsim.SimNeutronStarEOSNames)
+            print('Pass the model name as a string')
+            return None
         try:
-            assert eosname in allowedEoS
+            assert eosname in list(lalsim.SimNeutronStarEOSNames)
         except AssertionError:
             print('EoS family is not available in lalsimulation')
-            print('Allowed EoS are :\n' + str(allowedEoS))
-            sys.exit(1)
+            print('Allowed EoS are :\n' + str(lalsim.SimNeutronStarEOSNames))
+            print('Make sure that if you are passing a custom file, it exists')
+            print('in the path that you have provided...')
+            sys.exit(0)
+
         eos = lalsim.SimNeutronStarEOSByName(eosname)
         fam = lalsim.CreateSimNeutronStarFamily(eos)
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
@@ -257,7 +277,7 @@ class Model_selection:
                  max_mass_eos1] = self.getEoSInterpFromMLambdaFile(EoS1)
         else:
             [s1, _, _,
-             max_mass_eos1] = self.getEoSInterp(EoS1,
+             max_mass_eos1] = self.getEoSInterp(eosname=EoS1,
                                                 m_min=self.minMass)
 
         if os.path.exists(EoS2):
@@ -271,7 +291,7 @@ class Model_selection:
                  max_mass_eos2] = self.getEoSInterpFromMLambdaFile(EoS2)
         else:
             [s2, _, _,
-             max_mass_eos2] = self.getEoSInterp(EoS2,
+             max_mass_eos2] = self.getEoSInterp(eosname=EoS2,
                                                 m_min=self.minMass)
 
         # compute support
@@ -386,29 +406,8 @@ class Model_selection:
         q = np.linspace(q_min, q_max, gridN)
         m1, m2 = getMasses(q, mc)
 
-        # apply constraints
-        min_mass_violation_1 = m1 < self.minMass
-        min_mass_violation_2 = m2 < self.minMass
-        min_mass_violation = min_mass_violation_1 + min_mass_violation_2
-        m1 = m1[~min_mass_violation]
-        m2 = m2[~min_mass_violation]
-        q = q[~min_mass_violation]
-
-        # determine when bodies are black holes
-        kerr_cases_1 = m1 >= max_mass_eos
-        kerr_cases_2 = m2 >= max_mass_eos
-
-        Lambda1 = np.zeros_like(m1)
-        Lambda2 = np.zeros_like(m2)
-
-        # interpolate from known curves to obtain tidal
-        # deformabilities as a function of mass for the
-        # rest of the points
-        Lambda1[~kerr_cases_1] = eosfunc(m1[~kerr_cases_1])
-        Lambda2[~kerr_cases_2] = eosfunc(m2[~kerr_cases_2])
-
-        # compute chirp tidal deformability
-        LambdaT = getLambdaT(m1, m2, Lambda1, Lambda2)
+        m1, m2, q = self.apply_mass_constraint(m1, m2, q)
+        LambdaT = get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc)
 
         # scale things back so they make sense with the KDE
         LambdaT_scaled, q_scaled = LambdaT/var_LambdaT, q/var_q
@@ -420,3 +419,127 @@ class Model_selection:
         int_element = f_centers * dq
 
         return [LambdaT_scaled, q_scaled, np.sum(int_element)]
+
+    def apply_mass_constraint(self, m1, m2, q):
+        '''
+        Apply constraints on masses based on the prior or posterior sample
+        spread.
+        '''
+        min_mass_violation_1 = m1 < self.minMass
+        min_mass_violation_2 = m2 < self.minMass
+        min_mass_violation = min_mass_violation_1 + min_mass_violation_2
+        m1 = m1[~min_mass_violation]
+        m2 = m2[~min_mass_violation]
+        q = q[~min_mass_violation]
+        return (m1, m2, q)
+
+
+    def plot_func(self, eos_list, gridN=1000, filename='posterior_support.png',
+                  full_mc_dist=False):
+        '''
+        This method takes as input a list of equation of state models
+        and creates a plot where these equation of state models are
+        overlayed on the 2D posterior samples and their corresponding
+        KDE.
+
+        eos_list :: A list of equation state models. The members of
+                    list could be either one of the named equation of
+                    state in LALSimulation, or text files with columns
+                    giving the mass and tidal deformability information,
+                    or text files with columns giving mass, radius and
+                    tidal Love number. The method also accepts a string
+                    if the user wishes to plot a single equation of state.
+        '''
+        import pylab as pl
+
+        pl.clf()
+        pl.rcParams.update({'font.size': 18})
+        pl.figure(figsize=(15,10))
+
+        lambdat_grid = np.linspace(0, np.max(self.data['lambdat']), 100)
+        q_grid = np.linspace(np.min(self.data['q']), 1.0, 100)
+        L_GRID, Q_GRID = np.meshgrid(lambdat_grid, q_grid)
+        grid2D = np.array([L_GRID, Q_GRID]).T
+        a, b, c = np.shape(grid2D)
+        grid2D_reshaped = grid2D.reshape(a*b, c)
+        sample_data = np.vstack((self.data['lambdat'], self.data['q'])).T
+        kde = Bounded_2d_kde(sample_data, xlow=0.0, xhigh=None, ylow=0.0,
+                             yhigh=1.0, bw=self.bw)
+
+        support2Dgrid = kde.evaluate(grid2D_reshaped)
+
+        support2D_matrix = support2Dgrid.reshape(len(lambdat_grid),
+                                                 len(q_grid))
+        pl.pcolormesh(L_GRID, Q_GRID, support2D_matrix.T)
+        pl.colorbar()
+        pl.scatter(self.data['lambdat'], self.data['q'], marker='.', c='k',
+                   s=1, alpha=0.1)
+
+        q_min = self.q_min*self.var_q
+        q_max = self.q_max*self.var_q
+        mc = np.mean(self.data['mc_source'])
+        if full_mc_dist:
+            mc_low = np.min(self.data['mc_source'])
+            mc_hi = np.max(self.data['mc_source'])
+
+        q = np.linspace(q_min, q_max, gridN)
+        m1, m2 = getMasses(q, mc)
+        if full_mc_dist:
+            m1_low, m2_low = getMasses(q, mc_low)
+            m1_low, m2_low, q_low = self.apply_mass_constraint(m1_low, m2_low,
+                                                               q)
+            m1_hi, m2_hi = getMasses(q, mc_hi)
+            m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi, q)
+            if len(q_low) != len(q_hi):
+                q_fill = np.intersect1d(q_low, q_hi)
+                m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
+                m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
+                m1_low = m1_low[np.in1d(q_low, q_fill)]
+                m2_low = m2_low[np.in1d(q_low, q_fill)]
+                print(m1_hi.shape, m1_low.shape)
+        m1, m2, q = self.apply_mass_constraint(m1, m2, q)
+
+
+        assert (type(eos_list) == str or type(eos_list) == list)
+        if type(eos_list) == str:
+            eos_list = [eos_list]
+        for eos in eos_list:
+            if os.path.exists(eos):
+                print('Trying m-R-k file to compute EoS interpolant')
+                try:
+                    [s, _, _,
+                     max_mass_eos] = self.getEoSInterpFromMRFile(eos)
+                except ValueError:
+                    print('Trying m-λ file to compute EoS interpolant')
+                    [s, _, _,
+                     max_mass_eos] = self.getEoSInterpFromMLambdaFile(eos)
+            else:
+                [s, _, _,
+                 max_mass_eos] = self.getEoSInterp(eosname=eos,
+                                                   m_min=self.minMass)
+
+            LambdaT = get_LambdaT_for_eos(m1, m2, max_mass_eos, s)
+            if full_mc_dist:
+                LambdaT_low = get_LambdaT_for_eos(m1_low, m2_low,
+                                                  max_mass_eos, s)
+                LambdaT_hi = get_LambdaT_for_eos(m1_hi, m2_hi,
+                                                  max_mass_eos, s)
+
+            if full_mc_dist:
+                p = pl.plot(LambdaT, q, linewidth=1, label=eos)
+            else:
+                p = pl.plot(LambdaT, q, linewidth=3, label=eos)
+            color = p[0].get_color()
+            if full_mc_dist:
+                pl.fill_betweenx(q_fill, LambdaT_low, LambdaT_hi,
+                                 facecolor=color, alpha=0.5)
+            pl.xlabel('$\\tilde{\\Lambda}$')
+            pl.ylabel('$q$')
+            pl.xlim([np.min(self.data['lambdat']),
+                     np.max(self.data['lambdat'])])
+            pl.ylim([np.min(self.data['q']),
+                     np.max(self.data['q'])])
+            pl.legend()
+
+        pl.title('EoS = {}'.format(eos_list))
+        pl.savefig(filename, bbox_inches = 'tight')
