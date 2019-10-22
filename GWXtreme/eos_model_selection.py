@@ -496,7 +496,6 @@ class Model_selection:
                 m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
                 m1_low = m1_low[np.in1d(q_low, q_fill)]
                 m2_low = m2_low[np.in1d(q_low, q_fill)]
-                print(m1_hi.shape, m1_low.shape)
         m1, m2, q = self.apply_mass_constraint(m1, m2, q)
 
 
@@ -543,3 +542,82 @@ class Model_selection:
 
         pl.title('EoS = {}'.format(eos_list))
         pl.savefig(filename, bbox_inches = 'tight')
+
+
+class Stacking():
+    def __init__(self, event_list, event_priors=None):
+        '''
+        This class takes as input a list of posterior-samples files for
+        various events. Optionally, prior samples files can also be
+        supplied and allows us to compute the various quantities related
+        to each of the posterior samples.
+        '''
+        if type(event_list) != list:  # event_list must be a list
+            print('All arguments for Stacking must be a list of file-names')
+            sys.exit(0)
+
+        if event_priors:
+            if type(event_priors) != list:
+                print('All arguments for Stacking must be a lists of file-names')
+                sys.exit(0)
+
+        # Loop over the list and make sure all the paths exists.
+        # Keep only those events whose file exits.
+
+        sanitized_event_list = []
+        for event in event_list:
+            if os.path.exists(event):
+                sanitized_event_list.append(event)
+            else:
+                print('Could not file {}. Skipping event'.format(event))
+
+        self.event_list = sanitized_event_list
+
+        if event_priors:
+            sanitized_event_priors = []
+            for event_prior in event_priors:
+                if os.path.exists(event_prior):
+                    sanitized_event_priors.append(event_prior)
+                else:
+                    print('Could not file {}. Skipping'.format(event_prior))
+
+            self.event_priors = sanitized_event_priors
+
+        else:
+            self.event_priors = [None]*len(self.event_list)
+
+        # Right now the method demands a unique prior file for each event
+        # This may be changed later.
+        if len(self.event_priors) != len(self.event_list):
+            print('Number of prior and posterior files should be same')
+            sys.exit(0)
+
+
+    def stack_events(self, EoS1, EoS2, gridN=1000, trials=0):
+        '''
+        Loop through each event and compute the joint Bayes-factor
+        '''
+        joint_bf = 1.0
+        if trials > 0:
+            joint_bf_array = np.ones(trials)
+        for prior_file, event_file in zip(self.event_priors, self.event_list):
+            modsel = Model_selection(posteriorFile=event_file,
+                                     priorFile=prior_file)
+            bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
+                                                       gridN=gridN,
+                                                       trials=trials)
+            if type(bayes_factor) == np.float64:
+                joint_bf *= bayes_factor
+            elif type(bayes_factor) == list:
+                joint_bf *= bayes_factor[0]
+                joint_bf_array *= bayes_factor[-1]
+
+        if trials > 0:
+            uncertainty = 2*np.std(joint_bf_array) # augmenting the errors by 2
+            joint_bf = [joint_bf, uncertainty]
+
+        return joint_bf
+
+
+
+####
