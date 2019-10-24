@@ -213,6 +213,59 @@ In the methods paper_ ten thousand re-sampling were conducted to get the
 results. The uncertainty computation can also be conducted for the equation of
 state whose data was supplied from files, using the same syntax.
 
+Combining Bayes-Factors from multiple events:
+"""""""""""""""""""""""""""""""""""""""""""""
+If the equation of state of neutron star is a universal property of matter at
+high density, then we should be able to combine data from multiple gravitational
+wave detections from coalescence of compact binary objects and get a joint
+inference on the bayes-factor of the equation of state. We have implemented this
+using a method of stacking that has been described in paper_. This method is
+described below:
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme import eos_model_selection as ems
+   stackobj = ems.Stacking(['samples_1.dat', 'samples_2.dat',
+                            'samples_3.dat'],
+                           labels=['first event', 'second_event',
+                                   'third event'])
+   joint_bf = stackobj.stack_events('AP4', 'SLY')
+
+In this example the quantity `joint_bf` gives the joint bayes-factor between
+equation of state models `AP4` and `SLY` for three events. Note that the
+argument `labels` is optional, and is only useful if you are using the plotting
+tool discussed in :ref:`Plotting tool for stacking<stackplot>`.
+
+One can also access the Bayes-factors for each individual event from the object
+`stackobj` created above.
+
+.. code-block:: python
+
+   all_bayes_factors = stackobj.all_bayes_factors
+
+This will return a list whose elements are the Bayes-factor for all the three
+events.
+Furthermore, the user can also use the KDE-resampling method to estimate the
+uncertainty in the computed bayes-factor for the stacked Bayes-factors too.
+
+.. code-block:: python
+
+   joint_bf = stackobj.stack_events('AP4', 'SLY', trials=100)
+
+The Bayes-factor for the individual events and their uncertainty can be obtained
+using the object `stackobj`:
+
+.. code-block:: python
+
+   all_bayes_factors = stackobj.all_bayes_factors
+   all_bayes_factors_uncert = stackobj.all_bayes_factors_errors
+
+Where, once again the Bayes-factor of each event is accessed from the list
+`all_bayes_factors` and the uncertainties for each event is computed using the
+standard deviation of the resamples for each case and is returned in the list
+`all_bayes_factors_uncert`.
+
 
 Visualization tools:
 """"""""""""""""""""
@@ -269,6 +322,33 @@ This will generate a png file in the current working directory named
 
    Setting the full_mc_dist boolean argument to true allows the user to get the
    full extent of the chirp-mass distribution in the plot.
+
+
+Plotting tool for stacking:
+"""""""""""""""""""""""""""
+.. _stackplot:
+
+The result of the stacking can be plotted using a plotting tool that we provide
+along with the package. The plotting method is a member of the `Stacking` class
+thus needs the defining of the stacking object.
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme import eos_model_selection as ems
+   stackobj = ems.Stacking(['samples_1.dat', 'samples_2.dat',
+                            'samples_3.dat'],
+                           labels=['first event', 'second_event',
+                                   'third event'])
+   stackobj.plot_stacked_bf(eos_list=['AP4', 'SLY', 'H4'],
+                            ref_eos='SLY', trials=100)
+
+This will generate a plot in the present working directory where the results
+from the stacking of Bayes-factor w.r.t `SLY` will be plotted for the equation
+of states `AP4, SLY, H4`. The location of the plotted file can be configured
+using the kwarg `filename`.
+
+
 
 
 General Comments:
