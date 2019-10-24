@@ -545,7 +545,7 @@ class Model_selection:
 
 
 class Stacking():
-    def __init__(self, event_list, event_priors=None):
+    def __init__(self, event_list, event_priors=None, labels=None):
         '''
         This class takes as input a list of posterior-samples files for
         various events. Optionally, prior samples files can also be
@@ -561,13 +561,18 @@ class Stacking():
                 print('All arguments for Stacking must be a lists of file-names')
                 sys.exit(0)
 
+        if labels is None:
+            labels = [None]*len(event_list)
+
         # Loop over the list and make sure all the paths exists.
         # Keep only those events whose file exits.
 
         sanitized_event_list = []
-        for event in event_list:
+        self.labels = []
+        for event, label in zip(event_list, labels):
             if os.path.exists(event):
                 sanitized_event_list.append(event)
+                self.labels.append(label)
             else:
                 print('Could not file {}. Skipping event'.format(event))
 
@@ -595,11 +600,14 @@ class Stacking():
 
     def stack_events(self, EoS1, EoS2, gridN=1000, trials=0):
         '''
-        Loop through each event and compute the joint Bayes-factor
+        Loop through each event and compute the joint Bayes-factor.
+        Each
         '''
         joint_bf = 1.0
+        self.all_bayes_factors = [] # To be populated by B.Fs from all events
         if trials > 0:
             joint_bf_array = np.ones(trials)
+            self.all_bayes_factors_errors = []
         for prior_file, event_file in zip(self.event_priors, self.event_list):
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
@@ -608,15 +616,96 @@ class Stacking():
                                                        trials=trials)
             if type(bayes_factor) == np.float64:
                 joint_bf *= bayes_factor
+                self.all_bayes_factors.append(bayes_factor)
             elif type(bayes_factor) == list:
                 joint_bf *= bayes_factor[0]
+                self.all_bayes_factors.append(bayes_factor[0])
+                this_event_error = 2*np.std(bayes_factor[-1])
+                self.all_bayes_factors_errors.append(this_event_error)
                 joint_bf_array *= bayes_factor[-1]
 
         if trials > 0:
-            uncertainty = 2*np.std(joint_bf_array) # augmenting the errors by 2
-            joint_bf = [joint_bf, uncertainty]
+            joint_bf = [joint_bf, joint_bf_array]
 
         return joint_bf
+
+    def plot_stacked_bf(self, eos_list=None, ref_eos='SLY', trials=0,
+                        gridN=1000, filename='stacked_bf.pdf'):
+        '''
+        This method makes bar plots for bayes-factor between various EoS
+        and a reference EoS. It does this for multiple events. The bar plots
+        are generated for each event. The results are stacked and the then
+        a combined bayes-factor bar-plot is generated. Alternatively, this
+        method can also be used to make plots directly from data files.
+        '''
+
+        import pylab as pl
+
+        if eos_list is None:
+            eos_list = ['APR4_EPP', 'BHF_BBB2', 'H4', 'HQC18',
+                        'KDE0V', 'KDE0V1', 'MPA1', 'MS1B_PP',
+                        'MS1_PP', 'RS', 'SK255', 'SK272',
+                        'SKI2', 'SKI3', 'SKI4', 'SKI5', 'SKI6',
+                        'SKMP', 'SKOP', 'SLY9', 'WFF1']
+
+
+        # pl.rcParams.update({'font.size': 25})
+        # pl.figure(figsize=(65,20))
+
+        N = len(eos_list)
+        ind = np.arange(N)
+        width = 0.10
+
+        bf_combined = []
+        d_bf_combined = []
+        bf_all_events = []
+        d_bf_all_events = []
+        for eos in eos_list:
+            print('Stacking events for model: {}'.format(eos))
+            this_eos_bf = self.stack_events(eos, ref_eos, trials=trials)
+            if trials > 0:
+                bf_combined.append(this_eos_bf[0])
+                d_bf_combined.append(2*np.std(this_eos_bf[-1]))
+            else:
+                bf_combined.append(this_eos_bf)
+
+            bf_all_events.append(self.all_bayes_factors)
+            if trials > 0:
+                d_bf_all_events.append(self.all_bayes_factors_errors)
+
+
+        bf_all_events = np.array(bf_all_events).T
+        d_bf_all_events = np.array(d_bf_all_events).T
+
+        if trials > 0:
+            pl.bar(ind, bf_combined, width, yerr=d_bf_combined,
+                   error_kw=dict(lw=3, capsize=6, capthick=2),
+                   label="Joint Bayes' factor")
+        else:
+            pl.bar(ind, bf_combined, width, yerr=None,
+                   label="Joint Bayes' factor")
+
+        shift = 1
+        if trials > 0:
+            for bf, dbf, ll in zip(bf_all_events, d_bf_all_events, self.labels):
+                pl.bar(ind + shift*width, bf, width, yerr=dbf, capsize=6,
+                       label=ll, alpha=0.4)
+                pl.xticks(ind + 2.5*width, EoS_list, rotation=50)
+                shift += 1
+
+        else:
+            for bf, ll in zip(bf_all_events, self.labels):
+                pl.bar(ind + shift*width, bf, width, label=ll, alpha=0.4)
+                pl.xticks(ind + 2.5*width, eos_list, rotation=50)
+                shift += 1
+
+        pl.legend(loc='best')
+        ax = pl.gca()
+        pl.ylim([0,1.9])
+        pl.ylabel('Bayes-Factor w.r.t {}'.format(ref_eos))
+        pl.savefig(filename, bbox_inches = 'tight')
+
+
 
 
 
