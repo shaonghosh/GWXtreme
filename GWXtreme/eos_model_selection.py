@@ -19,6 +19,7 @@ from __future__ import division, print_function
 
 import os
 import sys
+import json
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -558,7 +559,7 @@ class Stacking():
 
         if event_priors:
             if type(event_priors) != list:
-                print('All arguments for Stacking must be a lists of file-names')
+                print('All arguments for Stacking must be lists of file-names')
                 sys.exit(0)
 
         if labels is None:
@@ -598,10 +599,32 @@ class Stacking():
             sys.exit(0)
 
 
-    def stack_events(self, EoS1, EoS2, gridN=1000, trials=0):
+    def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None):
         '''
         Loop through each event and compute the joint Bayes-factor.
-        Each
+        Each individual event's Bayes-factor can be accessed from the Stacking
+        object, using Stacking.all_bayes_factors. Uncertainty for each case can
+        be accessed by using Stacking.all_bayes_factors_errors.
+
+        EoS1 :: The name of the first equation of state model. This can be
+                either one of the named equation of state models from LALSuite,
+                or a file containing the information of the equation of state,
+                (m, λ) or (m, r, κ).
+
+        EoS2 :: The name of the second equation of state model. This can be
+                either one of the named equation of state models from LALSuite,
+                or a file containing the information of the equation of state,
+                (m, λ) or (m, r, κ).
+
+        trials :: Number of trials to be used to computed the uncertainty in the
+                  Bayes-factor.
+
+        gridN :: Number of grid points over which the line-integral is computed.
+                 (Default = 1000)
+
+        save :: Use this option to save the results into json files. If nothing
+                is provided, then output will not be saved. If a name is
+                provided then the output will be saved to a file with that name.
         '''
         joint_bf = 1.0
         self.all_bayes_factors = [] # To be populated by B.Fs from all events
@@ -624,6 +647,33 @@ class Stacking():
                 self.all_bayes_factors_errors.append(this_event_error)
                 joint_bf_array *= bayes_factor[-1]
 
+
+        if save is None:
+            if trials > 0:
+                joint_bf = [joint_bf, joint_bf_array]
+            return joint_bf
+
+
+        stack_dict = {}
+        stack_dict['all_bf'] = self.all_bayes_factors
+        if trials > 0:
+            stack_dict['all_bf_err'] = self.all_bayes_factors_errors
+        else:
+            stack_dict['all_bf_err'] = None
+        stack_dict['joint_bf'] = joint_bf
+        if trials > 0:
+            stack_dict['joint_bf_array'] = joint_bf_array.tolist()
+        else:
+            stack_dict['joint_bf_array'] = None
+
+
+        # Making sure that the file extension is json
+        if (save.split('.')[-1] != 'json') and (save.split('.')[-1] != 'JSON'):
+             save += '.json'
+
+        with open(save, 'w') as f:
+            json.dump(stack_dict, f)
+
         if trials > 0:
             joint_bf = [joint_bf, joint_bf_array]
 
@@ -637,6 +687,23 @@ class Stacking():
         are generated for each event. The results are stacked and the then
         a combined bayes-factor bar-plot is generated. Alternatively, this
         method can also be used to make plots directly from data files.
+
+        eos_list :: List of strings, either named equation of state models from
+                   LALSuite, or names of files contining the equation of state
+                   information, (m, λ) or (m, r, κ). If no list is provided, a
+                   default list will be used.
+
+        ref_eos :: Reference equation of state The equation of state against
+                   which the Bayes-factor is to be computed. If no reference
+                   model is used, the SLY model from LALSuite will be used.
+
+        trials :: Number of trials to be used to computed the uncertainty in the
+                  Bayes-factor.
+
+        gridN :: Number of grid points over which the line-integral is computed.
+                 (Default = 1000)
+
+        filename :: Name of the file where the plot will be saved.
         '''
 
         import pylab as pl
@@ -648,9 +715,6 @@ class Stacking():
                         'SKI2', 'SKI3', 'SKI4', 'SKI5', 'SKI6',
                         'SKMP', 'SKOP', 'SLY9', 'WFF1']
 
-
-        # pl.rcParams.update({'font.size': 25})
-        # pl.figure(figsize=(65,20))
 
         N = len(eos_list)
         ind = np.arange(N)
@@ -704,9 +768,3 @@ class Stacking():
         pl.ylim([0,1.9])
         pl.ylabel('Bayes-Factor w.r.t {}'.format(ref_eos))
         pl.savefig(filename, bbox_inches = 'tight')
-
-
-
-
-
-####
