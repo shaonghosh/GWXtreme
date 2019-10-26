@@ -71,7 +71,29 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
     return LambdaT
 
+def join_json_files(list_of_jsons):
+    '''
+    This helper function joins the JSON files from the output of the Bayes
+    factor computation methods in Model_selection and Stacking into one single
+    JSON file that can be directly used for further analysis.
 
+    list_of_jsons :: A list of all the JSON files that needs to be combined.
+    '''
+    combined_dict = {}
+    for json_file in list_of_jsons:
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+
+        this_eos_dict = {}
+        value_dict = {}
+        for element in list(data.keys()):
+            if (element != 'ref_eos') and (element != 'target_eos'):
+                value_dict[element] = data[element]
+
+        this_eos_dict[data['target_eos']] = value_dict
+        combined_dict[data['ref_eos']] = this_eos_dict
+
+    return combined_dict
 
 class Model_selection:
     def __init__(self, posteriorFile, priorFile=None):
