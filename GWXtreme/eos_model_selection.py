@@ -71,29 +71,40 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
     return LambdaT
 
-def join_json_files(list_of_jsons):
+def join_json_files(list_of_jsons, nametag="model"):
     '''
     This helper function joins the JSON files from the output of the Bayes
     factor computation methods in Model_selection and Stacking into one single
     JSON file that can be directly used for further analysis.
 
     list_of_jsons :: A list of all the JSON files that needs to be combined.
+    nametag :: Use this option to create a name-tag for the resulting JSON files
     '''
-    combined_dict = {}
+    alldata = []
+    reference_models = []
     for json_file in list_of_jsons:
         with open(json_file, 'r') as f:
-            data = json.load(f)
+            thisdata = json.load(f)
+            alldata.append(thisdata)
+            reference_models.append(thisdata['ref_eos'])
 
-        this_eos_dict = {}
-        value_dict = {}
-        for element in list(data.keys()):
-            if (element != 'ref_eos') and (element != 'target_eos'):
-                value_dict[element] = data[element]
+    # Keep unique names of the equation of state models
+    reference_models = np.unique(np.array(reference_models)).tolist()
 
-        this_eos_dict[data['target_eos']] = value_dict
-        combined_dict[data['ref_eos']] = this_eos_dict
+    for model in reference_models:
+        combined_dict = {}
+        for data in alldata:
+            if model == data['ref_eos']:
+                value = {'joint_bf': data['joint_bf'],
+                         'joint_bf_array':data['joint_bf_array'],
+                         'all_bf':data['all_bf'],
+                         'all_bf_err':data['all_bf_err']}
+                combined_dict[data['target_eos']] = value
 
-    return combined_dict
+        filename = 'bayes_factors_against_'+ model + '_' + nametag + '.json'
+        with open(filename, 'w') as f:
+            json.dump(combined_dict, f)
+
 
 class Model_selection:
     def __init__(self, posteriorFile, priorFile=None):
@@ -677,17 +688,20 @@ class Stacking():
 
 
         stack_dict = {}
-        stack_dict['all_bf'] = self.all_bayes_factors
-        if trials > 0:
-            stack_dict['all_bf_err'] = self.all_bayes_factors_errors
-        else:
-            stack_dict['all_bf_err'] = None
+        stack_dict['ref_eos'] = EoS2
+        stack_dict['target_eos'] = EoS1
+
         stack_dict['joint_bf'] = joint_bf
         if trials > 0:
             stack_dict['joint_bf_array'] = joint_bf_array.tolist()
         else:
             stack_dict['joint_bf_array'] = None
 
+        stack_dict['all_bf'] = self.all_bayes_factors
+        if trials > 0:
+            stack_dict['all_bf_err'] = self.all_bayes_factors_errors
+        else:
+            stack_dict['all_bf_err'] = None
 
         # Making sure that the file extension is json
         if (save.split('.')[-1] != 'json') and (save.split('.')[-1] != 'JSON'):
