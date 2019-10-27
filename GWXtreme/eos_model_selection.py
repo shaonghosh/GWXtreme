@@ -49,6 +49,7 @@ def getLambdaT(m1, m2, Lambda1, Lambda2):
                    (m2**5 + 12*m1*m2**4)*Lambda2
     return LambdaTilde
 
+
 def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
     '''
     This function accepts the masses and an equation of state interpolant
@@ -71,6 +72,7 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
     return LambdaT
 
+
 def join_json_files(list_of_jsons, nametag="model"):
     '''
     This helper function joins the JSON files from the output of the Bayes
@@ -78,7 +80,8 @@ def join_json_files(list_of_jsons, nametag="model"):
     JSON file that can be directly used for further analysis.
 
     list_of_jsons :: A list of all the JSON files that needs to be combined.
-    nametag :: Use this option to create a name-tag for the resulting JSON files
+    nametag :: Use this option to create a name-tag for the resulting JSON
+    files
     '''
     alldata = []
     reference_models = []
@@ -96,12 +99,12 @@ def join_json_files(list_of_jsons, nametag="model"):
         for data in alldata:
             if model == data['ref_eos']:
                 value = {'joint_bf': data['joint_bf'],
-                         'joint_bf_array':data['joint_bf_array'],
-                         'all_bf':data['all_bf'],
-                         'all_bf_err':data['all_bf_err']}
+                         'joint_bf_array': data['joint_bf_array'],
+                         'all_bf': data['all_bf'],
+                         'all_bf_err': data['all_bf_err']}
                 combined_dict[data['target_eos']] = value
 
-        filename = 'bayes_factors_against_'+ model + '_' + nametag + '.json'
+        filename = 'bayes_factors_against_' + model + '_' + nametag + '.json'
         with open(filename, 'w') as f:
             json.dump(combined_dict, f)
 
@@ -223,7 +226,7 @@ class Model_selection:
         This method accepts the data from a file that have the
         tidal deformability information in the following format:
 
-        #mass		λ
+        #mass    	λ
 
         ...	    	...
 
@@ -244,7 +247,6 @@ class Model_selection:
         s = interp1d(masses, Lambdas)
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
-
 
     def getEoSInterpFromMRFile(self, MRFile):
         '''
@@ -273,7 +275,6 @@ class Model_selection:
         s = interp1d(masses, Lambdas)
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
-
 
     def computeEvidenceRatio(self, EoS1, EoS2,
                              gridN=1000, trials=0):
@@ -467,7 +468,6 @@ class Model_selection:
         q = q[~min_mass_violation]
         return (m1, m2, q)
 
-
     def plot_func(self, eos_list, gridN=1000, filename='posterior_support.png',
                   full_mc_dist=False):
         '''
@@ -488,7 +488,7 @@ class Model_selection:
 
         pl.clf()
         pl.rcParams.update({'font.size': 18})
-        pl.figure(figsize=(15,10))
+        pl.figure(figsize=(15, 10))
 
         lambdat_grid = np.linspace(0, np.max(self.data['lambdat']), 100)
         q_grid = np.linspace(np.min(self.data['q']), 1.0, 100)
@@ -532,7 +532,6 @@ class Model_selection:
                 m2_low = m2_low[np.in1d(q_low, q_fill)]
         m1, m2, q = self.apply_mass_constraint(m1, m2, q)
 
-
         assert (type(eos_list) == str or type(eos_list) == list)
         if type(eos_list) == str:
             eos_list = [eos_list]
@@ -555,8 +554,7 @@ class Model_selection:
             if full_mc_dist:
                 LambdaT_low = get_LambdaT_for_eos(m1_low, m2_low,
                                                   max_mass_eos, s)
-                LambdaT_hi = get_LambdaT_for_eos(m1_hi, m2_hi,
-                                                  max_mass_eos, s)
+                LambdaT_hi = get_LambdaT_for_eos(m1_hi, m2_hi, max_mass_eos, s)
 
             if full_mc_dist:
                 p = pl.plot(LambdaT, q, linewidth=1, label=eos)
@@ -575,7 +573,7 @@ class Model_selection:
             pl.legend()
 
         pl.title('EoS = {}'.format(eos_list))
-        pl.savefig(filename, bbox_inches = 'tight')
+        pl.savefig(filename, bbox_inches='tight')
 
 
 class Stacking():
@@ -631,7 +629,6 @@ class Stacking():
             print('Number of prior and posterior files should be same')
             sys.exit(0)
 
-
     def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None):
         '''
         Loop through each event and compute the joint Bayes-factor.
@@ -649,18 +646,19 @@ class Stacking():
                 or a file containing the information of the equation of state,
                 (m, λ) or (m, r, κ).
 
-        trials :: Number of trials to be used to computed the uncertainty in the
-                  Bayes-factor.
+        trials :: Number of trials to be used to computed the uncertainty in
+                  the Bayes-factor.
 
-        gridN :: Number of grid points over which the line-integral is computed.
-                 (Default = 1000)
+        gridN :: Number of grid points over which the line-integral is
+                 computed (Default = 1000).
 
         save :: Use this option to save the results into json files. If nothing
                 is provided, then output will not be saved. If a name is
-                provided then the output will be saved to a file with that name.
+                provided then the output will be saved to a file with that
+                name.
         '''
         joint_bf = 1.0
-        self.all_bayes_factors = [] # To be populated by B.Fs from all events
+        self.all_bayes_factors = []  # To be populated by B.Fs from all events
         if trials > 0:
             joint_bf_array = np.ones(trials)
             self.all_bayes_factors_errors = []
@@ -680,12 +678,10 @@ class Stacking():
                 self.all_bayes_factors_errors.append(this_event_error)
                 joint_bf_array *= bayes_factor[-1]
 
-
         if save is None:
             if trials > 0:
                 joint_bf = [joint_bf, joint_bf_array]
             return joint_bf
-
 
         stack_dict = {}
         stack_dict['ref_eos'] = EoS2
@@ -705,7 +701,7 @@ class Stacking():
 
         # Making sure that the file extension is json
         if (save.split('.')[-1] != 'json') and (save.split('.')[-1] != 'JSON'):
-             save += '.json'
+            save += '.json'
 
         with open(save, 'w') as f:
             json.dump(stack_dict, f)
@@ -733,11 +729,11 @@ class Stacking():
                    which the Bayes-factor is to be computed. If no reference
                    model is used, the SLY model from LALSuite will be used.
 
-        trials :: Number of trials to be used to computed the uncertainty in the
-                  Bayes-factor.
+        trials :: Number of trials to be used to computed the uncertainty in
+                  the Bayes-factor.
 
-        gridN :: Number of grid points over which the line-integral is computed.
-                 (Default = 1000)
+        gridN :: Number of grid points over which the line-integral
+                 computed (Default = 1000).
 
         filename :: Name of the file where the plot will be saved.
         '''
@@ -750,7 +746,6 @@ class Stacking():
                         'MS1_PP', 'RS', 'SK255', 'SK272',
                         'SKI2', 'SKI3', 'SKI4', 'SKI5', 'SKI6',
                         'SKMP', 'SKOP', 'SLY9', 'WFF1']
-
 
         N = len(eos_list)
         ind = np.arange(N)
@@ -773,7 +768,6 @@ class Stacking():
             if trials > 0:
                 d_bf_all_events.append(self.all_bayes_factors_errors)
 
-
         bf_all_events = np.array(bf_all_events).T
         d_bf_all_events = np.array(d_bf_all_events).T
 
@@ -787,7 +781,7 @@ class Stacking():
 
         shift = 1
         if trials > 0:
-            for bf, dbf, ll in zip(bf_all_events, d_bf_all_events, self.labels):
+            for bf, dbf, ll in zip(bf_all_events, d_bf_all_events, self.labels):  # noqa E501
                 pl.bar(ind + shift*width, bf, width, yerr=dbf, capsize=6,
                        label=ll, alpha=0.4)
                 pl.xticks(ind + 2.5*width, EoS_list, rotation=50)
@@ -801,6 +795,6 @@ class Stacking():
 
         pl.legend(loc='best')
         ax = pl.gca()
-        pl.ylim([0,1.9])
+        pl.ylim([0, 1.9])
         pl.ylabel('Bayes-Factor w.r.t {}'.format(ref_eos))
-        pl.savefig(filename, bbox_inches = 'tight')
+        pl.savefig(filename, bbox_inches='tight')
