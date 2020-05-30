@@ -739,6 +739,7 @@ class Stacking():
         '''
 
         import pylab as pl
+        pl.clf()
 
         if eos_list is None:
             eos_list = ['APR4_EPP', 'BHF_BBB2', 'H4', 'HQC18',
