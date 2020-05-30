@@ -524,12 +524,11 @@ class Model_selection:
                                                                q)
             m1_hi, m2_hi = getMasses(q, mc_hi)
             m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi, q)
-            if len(q_low) != len(q_hi):
-                q_fill = np.intersect1d(q_low, q_hi)
-                m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
-                m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
-                m1_low = m1_low[np.in1d(q_low, q_fill)]
-                m2_low = m2_low[np.in1d(q_low, q_fill)]
+            q_fill = np.intersect1d(q_low, q_hi)
+            m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
+            m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
+            m1_low = m1_low[np.in1d(q_low, q_fill)]
+            m2_low = m2_low[np.in1d(q_low, q_fill)]
         m1, m2, q = self.apply_mass_constraint(m1, m2, q)
 
         assert (type(eos_list) == str or type(eos_list) == list)
