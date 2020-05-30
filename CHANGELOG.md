@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
+- New feature: Stacking of multiple binary neutron star events
+- New feature: Plotting of Bayes-factor w.r.t a fiducial EoS.
+  The Bayes-factor can be computed by stacking information from
+  multiple events.
+- Documentation added for stacking.
+
+## [0.1.1] - 2019-10-13
+### Added
 - Added long description and home page URL
 
 ## [0.1.0] - 2019-10-10
