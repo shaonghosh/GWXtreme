@@ -784,7 +784,7 @@ class Stacking():
             for bf, dbf, ll in zip(bf_all_events, d_bf_all_events, self.labels):  # noqa E501
                 pl.bar(ind + shift*width, bf, width, yerr=dbf, capsize=6,
                        label=ll, alpha=0.4)
-                pl.xticks(ind + 2.5*width, EoS_list, rotation=50)
+                pl.xticks(ind + 2.5*width, eos_list, rotation=50)
                 shift += 1
 
         else:
