@@ -106,7 +106,7 @@ def join_json_files(list_of_jsons, nametag="model"):
 
         filename = 'bayes_factors_against_' + model + '_' + nametag + '.json'
         with open(filename, 'w') as f:
-            json.dump(combined_dict, f)
+            json.dump(combined_dict, f, indent=2, sort_keys=True)
 
 
 class Model_selection:
@@ -703,7 +703,7 @@ class Stacking():
             save += '.json'
 
         with open(save, 'w') as f:
-            json.dump(stack_dict, f)
+            json.dump(stack_dict, f, indent=2, sort_keys=True)
 
         if trials > 0:
             joint_bf = [joint_bf, joint_bf_array]
