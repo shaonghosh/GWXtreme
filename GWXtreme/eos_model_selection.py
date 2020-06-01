@@ -276,8 +276,8 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def computeEvidenceRatio(self, EoS1, EoS2,
-                             gridN=1000, trials=0):
+    def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000,
+                             save=None, trials=0):
         '''
         This method computes the ratio of evidences for two
         tabulated EoS. It first checks if a file exists with
@@ -398,6 +398,17 @@ class Model_selection:
             support2D2_list.append(this_support2D2)
 
         sup_array = np.array(support2D1_list)/np.array(support2D2_list)
+        if save:
+            bf_dict = {}
+            bf_dict['ref_eos'] = EoS2
+            bf_dict['target_eos'] = EoS1
+            bf_dict['bf'] = support2D1/support2D2
+            bf_dict['bf_array'] = sup_array.tolist()
+            # Making sure that the file extension is json
+            if (save.split('.')[-1] != 'json') and (save.split('.')[-1] != 'JSON'):
+                save += '.json'
+            with open(save, 'w') as f:
+                json.dump(bf_dict, f, indent=2, sort_keys=True)
         return [support2D1/support2D2, sup_array]
 
     # The integrator function #
