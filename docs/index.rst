@@ -213,6 +213,49 @@ In the methods paper_ ten thousand re-sampling were conducted to get the
 results. The uncertainty computation can also be conducted for the equation of
 state whose data was supplied from files, using the same syntax.
 
+Save results in JSON files:
+"""""""""""""""""""""""""""
+The results from the bayes-factor computation can also be saved in JSON format 
+for future analysis and postprocessing. This feature is only available when the 
+number of trials is greater than 0. Use the keyword `save` to pass the name of 
+the JSON file where the data will be saved. 
+
+.. code-block:: python
+   :linenos: 
+
+   from GWXtreme import eos_model_selection as ems
+   modsel = ems.Model_selection(posteriorFile='samples.dat',
+                                priorFile=None)
+   modsel.computeEvidenceRatio('AP4', 'SLY', trials=10,
+                               save='bayes_factor_ap4_sly.json'
+
+The resulting JSON file looks like as follows:
+
+.. code-block:: python
+
+   {
+     "bf": 1.0783080269512513,
+     "bf_array": [
+       1.0602546775709871,
+       1.043219903278589,
+       1.0567744311697058,
+       1.0598349778783323,
+       1.0433201330742048,
+       1.0538215562925697,
+       1.0445375050779768,
+       1.0712610476841586,
+       1.0606600260367158,
+       1.0634382129867201
+     ],
+     "ref_eos": "SLY",
+     "target_eos": "AP4"
+   }
+
+The field `bf` stores the value of the Bayes factor between the two equation of 
+states (`target_eos` and `target_eos`). The field `bf_array` stores the same for 
+the various trials.
+
+
 Combining Bayes-Factors from multiple events:
 """""""""""""""""""""""""""""""""""""""""""""
 If the equation of state of neutron star is a universal property of matter at
@@ -265,6 +308,24 @@ Where, once again the Bayes-factor of each event is accessed from the list
 `all_bayes_factors` and the uncertainties for each event is computed using the
 standard deviation of the resamples for each case and is returned in the list
 `all_bayes_factors_uncert`.
+
+Save results in JSON files:
+"""""""""""""""""""""""""""
+The results from thestacking of BF computation can also be saved in JSON format
+for future analysis and postprocessing. Use the keyword `save` to pass the name
+of the JSON file where the data will be saved.
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme import eos_model_selection as ems
+   stackobj = ems.Stacking(["samples1.dat", "samples2.dat",
+                            "samples3.dat"],
+                            labels=['first event', 'second event',
+                                    'thirdevent'])
+   stackobj.stack_events('AP4', 'SLY', trials=5,
+                         save='stack_result_ap4_sly.json')
+
 
 
 Visualization tools:
