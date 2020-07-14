@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+# This script looks for JSON files created by the driver script that are dumped in an 
+# output directory, and combines them into a single JSON file with all the trials.
+# The script also takes in the number of processes as input and makes sure that it 
+# waits for all the processes to have finished before it begins combining them in a
+# single file.
+
+import os
+import sys
+import time
+import argparse
+
+import json
+import numpy as np
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--directory", action="store", type=str, help="Location of the results directory")
+parser.add_argument("-p", "--processes", action="store", type=int, help="Number of total processes")
+args = parser.parse_args()
+
+results = os.listdir(args.directory)
+count = 0
+while True: # wait till all files are present
+    results = os.listdir(args.directory)
+    time.sleep(1)
+    count += 1
+    if len(results) == args.processes:
+        break
+print('Total time taken to run {} processes = {}s'.format(args.processes, count))
+
+print('Aggregated all processes...')
+bf_array = np.array([])
+for File in results:
+    with open(os.path.join(args.directory, File), 'r') as f:
+        data = json.load(f)
+    bf_array = np.append(bf_array, data['bf_array'])
+
+# Create the uber JSON file
+bf_dict = {}
+bf_dict['bf'] = data['bf']
+bf_dict['bf_array'] = bf_array.tolist()
+bf_dict['ref_eos'] = data['ref_eos']
+bf_dict['target_eos'] = data['target_eos']
+with open('bayes_factor.json', 'w') as f:
+    json.dump(bf_dict, f, indent=2, sort_keys=True)
+
+
+
