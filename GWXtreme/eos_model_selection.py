@@ -479,8 +479,8 @@ class Model_selection:
         q = q[~min_mass_violation]
         return (m1, m2, q)
 
-    def plot_func(self, eos_list, gridN=1000, filename='posterior_support.png',
-                  full_mc_dist=False):
+    def plot_func(self, eos_list, gridN=1000, filename='posterior_support.pdf',
+                  full_mc_dist=False, usetitle=False):
         '''
         This method takes as input a list of equation of state models
         and creates a plot where these equation of state models are
@@ -494,6 +494,14 @@ class Model_selection:
                     or text files with columns giving mass, radius and
                     tidal Love number. The method also accepts a string
                     if the user wishes to plot a single equation of state.
+
+        gridN :: # of grid pts used for plotting EOS curves. (Default: 1000)
+        filename :: Name of the output file in the which the plot will be
+                    saved. (Default: posterior_support.png)
+        full_mc_dist :: The EOS curves in the eos_list will be plotted with
+                        as a band bounded by the smallest and the largest
+                        values of the chirp mass.
+        usetitle :: List of EoS on the title of the plot (Default: False) 
         '''
         import pylab as pl
 
@@ -582,7 +590,9 @@ class Model_selection:
                      np.max(self.data['q'])])
             pl.legend()
 
-        pl.title('EoS = {}'.format(eos_list))
+        if usetitle:
+            text = ', '.join('{0}'.format(eos) for eos in eos_list)
+            pl.title('EoS = {}'.format(text))
         pl.savefig(filename, bbox_inches='tight')
 
 
