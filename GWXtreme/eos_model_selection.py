@@ -494,19 +494,19 @@ class Model_selection:
                 trials_per_worker.append(len(split[ii]))
 
         futures = []
-        for ii, trials, in zip(range(workers), trials_per_worker):
+        for ii, this_trials, in zip(range(workers), trials_per_worker):
             future_dict = {"margPostData": self.margPostData, "kde": self.kde,
                            "yhigh": self.yhigh, "bw": self.bw, "q_min": self.q_min,
                            "q_max": self.q_max, "mc_mean": self.mc_mean, "s1": s1,
                            "s2": s2, "max_mass_eos1": max_mass_eos1,
                            "max_mass_eos2": max_mass_eos2, "gridN": gridN,
                            "var_LambdaT": self.var_LambdaT, "var_q": self.var_q,
-                           "minMass": self.minMass, 'trials': trials}
+                           "minMass": self.minMass, 'trials': this_trials}
             futures.append(get_trials.remote(future_dict))
         ray.get(futures)
         sup_array = np.array([])
         for future in futures:
-            sup_array = np.append(sup_array, ray.get(futures))
+            sup_array = np.append(sup_array, ray.get(future))
 
         if save:
             bf_dict = {}
