@@ -402,7 +402,7 @@ class Model_selection:
         return [s, masses, Lambdas, max_mass]
 
     def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000,
-                             save=None, trials=0):
+                             save=None, trials=0, verbose=False):
         '''
         This method computes the ratio of evidences for two
         tabulated EoS. It first checks if a file exists with
@@ -427,12 +427,14 @@ class Model_selection:
         # generate interpolators for both EOS
 
         if os.path.exists(EoS1):
-            print('Trying m-R-k file to compute EoS interpolant')
+            if verbose:
+                print('Trying m-R-k file to compute EoS interpolant')
             try:
                 [s1, _, _,
                  max_mass_eos1] = self.getEoSInterpFromMRFile(EoS1)
             except ValueError:
-                print('Trying m-λ file to compute EoS interpolant')
+                if verbose:
+                    print('Trying m-λ file to compute EoS interpolant')
                 [s1, _, _,
                  max_mass_eos1] = self.getEoSInterpFromMLambdaFile(EoS1)
         else:
@@ -441,12 +443,14 @@ class Model_selection:
                                                 m_min=self.minMass)
 
         if os.path.exists(EoS2):
-            print('Trying m-R-k file to compute EoS interpolant')
+            if verbose:
+                print('Trying m-R-k file to compute EoS interpolant')
             try:
                 [s2, _, _,
                  max_mass_eos2] = self.getEoSInterpFromMRFile(EoS2)
             except ValueError:
-                print('Trying m-λ file to compute EoS interpolant')
+                if verbose:
+                    print('Trying m-λ file to compute EoS interpolant')
                 [s2, _, _,
                  max_mass_eos2] = self.getEoSInterpFromMLambdaFile(EoS2)
         else:
@@ -481,6 +485,8 @@ class Model_selection:
 
         ray.init()
         cores = multiprocessing.cpu_count()
+        if verbose:
+            print("Total number of cores in this machine: {}".format(cores))
 
         # Splitting (nearly) equally the # of trials over the # of workers
         if trials < cores:
@@ -503,6 +509,8 @@ class Model_selection:
                            "var_LambdaT": self.var_LambdaT, "var_q": self.var_q,
                            "minMass": self.minMass, 'trials': this_trials}
             futures.append(get_trials.remote(future_dict))
+            if verbose:
+                print("Submitted task in core: {}".format(ii+1))
         ray.get(futures)
         sup_array = np.array([])
         for future in futures:
@@ -519,6 +527,8 @@ class Model_selection:
                 save += '.json'
             with open(save, 'w') as f:
                 json.dump(bf_dict, f, indent=2, sort_keys=True)
+            if verbose:
+                print("Result saved in: {}".format(save))
 
         ray.shutdown()
         return [support2D1/support2D2, sup_array]
