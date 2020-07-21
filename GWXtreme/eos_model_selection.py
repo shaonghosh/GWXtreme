@@ -20,7 +20,9 @@ from __future__ import division, print_function
 import os
 import sys
 import json
+import multiprocessing
 
+import ray
 import numpy as np
 from scipy.interpolate import interp1d
 
@@ -28,6 +30,7 @@ import lal
 import lalsimulation as lalsim
 
 from .bounded_2d_kde import Bounded_2d_kde
+
 
 
 def getMasses(q, mc):
@@ -107,6 +110,128 @@ def join_json_files(list_of_jsons, nametag="model"):
         filename = 'bayes_factors_against_' + model + '_' + nametag + '.json'
         with open(filename, 'w') as f:
             json.dump(combined_dict, f, indent=2, sort_keys=True)
+
+
+# The integrator function #
+def integrator(q_min, q_max, mc, eosfunc, max_mass_eos, postfunc,
+               gridN=1000, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
+    '''
+    This function numerically integrates the KDE along the
+    EoS curve.
+
+    q_min  	:: Minimum value of mass-ratio for the EoS curve
+
+    q_max  	:: Maximum value of mass-ratio for the EoS curve
+
+    mc	:: Chirp mass (fixed to mean value of posterior)
+
+    eosfunc	 :: interpolation function of Λ = eosfunc(m)
+
+    max_mass_eos :: Maximum mass allowed by the EoS.
+
+    postfunc :: K(Λ, q) KDE of the posterior distr
+
+    gridN  :: Number of steps for the integration (default=1K)
+
+    var_LambdaT :: Standard deviation of the LambdT
+
+    var_q  :: Standard deviation of the mass-ratio
+
+    minMass :: The value of the minimum mass for the lines integration
+
+    If for the choice of mass-ratio and mc, the masses of one
+    or both the object goes above the maximum mass of NS
+    allowed by the EoS, then the object(s) is(are) treated as
+    BH (Λ=0). If the masses are below the minimum mass, the
+    points are excludeds from the integral.
+
+    '''
+    # scale these appropriately to evaluate prior bounds
+    q_min *= var_q
+    q_max *= var_q
+
+    # get values for line integral
+    q = np.linspace(q_min, q_max, gridN)
+    m1, m2 = getMasses(q, mc)
+
+    m1, m2, q = apply_mass_constraint(m1, m2, q, minMass)
+    LambdaT = get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc)
+
+    # scale things back so they make sense with the KDE
+    LambdaT_scaled, q_scaled = LambdaT/var_LambdaT, q/var_q
+
+    # perform integration via trapazoidal approximation
+    dq = np.diff(q)
+    f = postfunc.evaluate(np.vstack((LambdaT_scaled, q_scaled)).T)
+    f_centers = 0.5*(f[1:] + f[:-1])
+    int_element = f_centers * dq
+
+    return [LambdaT_scaled, q_scaled, np.sum(int_element)]
+
+def apply_mass_constraint(m1, m2, q, minMass):
+    '''
+    Apply constraints on masses based on the prior or posterior sample
+    spread.
+    '''
+    min_mass_violation_1 = m1 < minMass
+    min_mass_violation_2 = m2 < minMass
+    min_mass_violation = min_mass_violation_1 + min_mass_violation_2
+    m1 = m1[~min_mass_violation]
+    m2 = m2[~min_mass_violation]
+    q = q[~min_mass_violation]
+    return (m1, m2, q)
+
+@ray.remote
+def get_trials(fd):
+    support2D1_list = []
+    support2D2_list = []
+    for ii in range(fd['trials']):
+
+        # generate new (synthetic) data
+        new_margPostData = np.array([])
+        counter = 0
+        while len(new_margPostData) < len(fd['margPostData']):
+            prune_adjust_factor = 1.1 + counter/10.
+            N_resample = int(len(fd['margPostData'])*prune_adjust_factor)
+            new_margPostData = fd['kde'].resample(size=N_resample).T
+            unphysical = (new_margPostData[:, 0] < 0) +\
+                         (new_margPostData[:, 1] > fd['yhigh']) +\
+                         (new_margPostData[:, 1] < 0)
+            new_margPostData = new_margPostData[~unphysical]
+            counter += 1
+        indices = np.arange(len(new_margPostData))
+        chosen = np.random.choice(indices, len(fd['margPostData']))
+        new_margPostData = new_margPostData[chosen]
+
+        # generate a new kde
+        new_kde = Bounded_2d_kde(new_margPostData, xlow=0.0,
+                                 xhigh=None, ylow=0.0,
+                                 yhigh=fd['yhigh'],
+                                 bw=fd['bw'])
+
+        # integrate to get support
+        [this_lambdat_eos1, this_q_eos1,
+         this_support2D1] = integrator(fd['q_min'], fd['q_max'],
+                                       fd['mc_mean'], fd['s1'],
+                                       fd['max_mass_eos1'], new_kde,
+                                       gridN=fd['gridN'],
+                                       var_LambdaT=fd['var_LambdaT'],
+                                       var_q=fd['var_q'],
+                                       minMass=fd['minMass'])
+        [this_lambdat_eos2, this_q_eos2,
+         this_support2D2] = integrator(fd['q_min'], fd['q_max'],
+                                       fd['mc_mean'], fd['s2'],
+                                       fd['max_mass_eos2'], new_kde,
+                                       gridN=fd['gridN'],
+                                       var_LambdaT=fd['var_LambdaT'],
+                                       var_q=fd['var_q'],
+                                       minMass=fd['minMass'])
+        # store the result
+        support2D1_list.append(this_support2D1)
+        support2D2_list.append(this_support2D2)
+
+    sup_array = np.array(support2D1_list)/np.array(support2D2_list)
+    return sup_array
 
 
 class Model_selection:
@@ -257,7 +382,7 @@ class Model_selection:
 
         ...	    	...          ...
 
-        ...		    ...          ...
+        ...		...          ...
 
         max_mass	...          ...
 
@@ -277,7 +402,7 @@ class Model_selection:
         return [s, masses, Lambdas, max_mass]
 
     def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000,
-                             save=None, trials=0):
+                             save=None, trials=0, verbose=False):
         '''
         This method computes the ratio of evidences for two
         tabulated EoS. It first checks if a file exists with
@@ -302,12 +427,14 @@ class Model_selection:
         # generate interpolators for both EOS
 
         if os.path.exists(EoS1):
-            print('Trying m-R-k file to compute EoS interpolant')
+            if verbose:
+                print('Trying m-R-k file to compute EoS interpolant')
             try:
                 [s1, _, _,
                  max_mass_eos1] = self.getEoSInterpFromMRFile(EoS1)
             except ValueError:
-                print('Trying m-λ file to compute EoS interpolant')
+                if verbose:
+                    print('Trying m-λ file to compute EoS interpolant')
                 [s1, _, _,
                  max_mass_eos1] = self.getEoSInterpFromMLambdaFile(EoS1)
         else:
@@ -316,12 +443,14 @@ class Model_selection:
                                                 m_min=self.minMass)
 
         if os.path.exists(EoS2):
-            print('Trying m-R-k file to compute EoS interpolant')
+            if verbose:
+                print('Trying m-R-k file to compute EoS interpolant')
             try:
                 [s2, _, _,
                  max_mass_eos2] = self.getEoSInterpFromMRFile(EoS2)
             except ValueError:
-                print('Trying m-λ file to compute EoS interpolant')
+                if verbose:
+                    print('Trying m-λ file to compute EoS interpolant')
                 [s2, _, _,
                  max_mass_eos2] = self.getEoSInterpFromMLambdaFile(EoS2)
         else:
@@ -331,73 +460,62 @@ class Model_selection:
 
         # compute support
         [lambdat_eos1,
-         q_eos1, support2D1] = self.integrator(self.q_min, self.q_max,
-                                               self.mc_mean, s1,
-                                               max_mass_eos1, self.kde,
-                                               gridN=gridN,
-                                               var_LambdaT=self.var_LambdaT,
-                                               var_q=self.var_q)
+         q_eos1, support2D1] = integrator(self.q_min, self.q_max, self.mc_mean,
+                                          s1, max_mass_eos1, self.kde,
+                                          gridN=gridN,
+                                          var_LambdaT=self.var_LambdaT,
+                                          var_q=self.var_q,
+                                          minMass=self.minMass)
 
         [lambdat_eos2,
-         q_eos2, support2D2] = self.integrator(self.q_min, self.q_max,
-                                               self.mc_mean, s2,
-                                               max_mass_eos2, self.kde,
-                                               gridN=gridN,
-                                               var_LambdaT=self.var_LambdaT,
-                                               var_q=self.var_q)
+         q_eos2, support2D2] = integrator(self.q_min, self.q_max, self.mc_mean,
+                                          s2, max_mass_eos2, self.kde,
+                                          gridN=gridN,
+                                          var_LambdaT=self.var_LambdaT,
+                                          var_q=self.var_q,
+                                          minMass=self.minMass)
 
         # iterate to determine uncertainty via re-drawing from
         # smoothed distribution
-        # NOTE: this is known to introduce a non-zero bias into
-        # the mean and variance estimate!
-        support2D1_list = []
-        support2D2_list = []
+        # NOTE: this is known to introduce a bias into the mean
+        # and variance estimate!
+
         if trials == 0:
             return (support2D1/support2D2)
-        for ii in range(trials):
 
-            # generate new (synthetic) data
-            new_margPostData = np.array([])
-            counter = 0
-            while len(new_margPostData) < len(self.margPostData):
-                prune_adjust_factor = 1.1 + counter/10.
-                N_resample = int(len(self.margPostData)*prune_adjust_factor)
-                new_margPostData = self.kde.resample(size=N_resample).T
-                unphysical = (new_margPostData[:, 0] < 0) +\
-                             (new_margPostData[:, 1] > self.yhigh) +\
-                             (new_margPostData[:, 1] < 0)
-                new_margPostData = new_margPostData[~unphysical]
-                counter += 1
-            indices = np.arange(len(new_margPostData))
-            chosen = np.random.choice(indices, len(self.margPostData))
-            new_margPostData = new_margPostData[chosen]
+        ray.init()
+        cores = multiprocessing.cpu_count()
+        if verbose:
+            print("Total number of cores in this machine: {}".format(cores))
 
-            # generate a new kde
-            new_kde = Bounded_2d_kde(new_margPostData, xlow=0.0,
-                                     xhigh=None, ylow=0.0,
-                                     yhigh=self.yhigh,
-                                     bw=self.bw)
+        # Splitting (nearly) equally the # of trials over the # of workers
+        if trials < cores:
+            workers = trials
+            trials_per_worker = np.ones(workers, dtype=int)
+        else:
+            workers = cores
+            split = np.array_split(np.arange(trials), workers)
+            trials_per_worker = []
+            for ii in range(cores):
+                trials_per_worker.append(len(split[ii]))
 
-            # integrate to get support
-            [this_lambdat_eos1, this_q_eos1,
-             this_support2D1] = self.integrator(self.q_min, self.q_max,
-                                                self.mc_mean, s1,
-                                                max_mass_eos1, new_kde,
-                                                gridN=gridN,
-                                                var_LambdaT=self.var_LambdaT,
-                                                var_q=self.var_q)
-            [this_lambdat_eos2, this_q_eos2,
-             this_support2D2] = self.integrator(self.q_min, self.q_max,
-                                                self.mc_mean, s2,
-                                                max_mass_eos2, new_kde,
-                                                gridN=gridN,
-                                                var_LambdaT=self.var_LambdaT,
-                                                var_q=self.var_q)
-            # store the result
-            support2D1_list.append(this_support2D1)
-            support2D2_list.append(this_support2D2)
+        futures = []
+        for ii, this_trials, in zip(range(workers), trials_per_worker):
+            future_dict = {"margPostData": self.margPostData, "kde": self.kde,
+                           "yhigh": self.yhigh, "bw": self.bw, "q_min": self.q_min,
+                           "q_max": self.q_max, "mc_mean": self.mc_mean, "s1": s1,
+                           "s2": s2, "max_mass_eos1": max_mass_eos1,
+                           "max_mass_eos2": max_mass_eos2, "gridN": gridN,
+                           "var_LambdaT": self.var_LambdaT, "var_q": self.var_q,
+                           "minMass": self.minMass, 'trials': this_trials}
+            futures.append(get_trials.remote(future_dict))
+            if verbose:
+                print("Submitted task in core: {}".format(ii+1))
+        ray.get(futures)
+        sup_array = np.array([])
+        for future in futures:
+            sup_array = np.append(sup_array, ray.get(future))
 
-        sup_array = np.array(support2D1_list)/np.array(support2D2_list)
         if save:
             bf_dict = {}
             bf_dict['ref_eos'] = EoS2
@@ -409,75 +527,13 @@ class Model_selection:
                 save += '.json'
             with open(save, 'w') as f:
                 json.dump(bf_dict, f, indent=2, sort_keys=True)
+            if verbose:
+                print("Result saved in: {}".format(save))
+
+        ray.shutdown()
         return [support2D1/support2D2, sup_array]
 
-    # The integrator function #
-    def integrator(self, q_min, q_max, mc, eosfunc,
-                   max_mass_eos, postfunc,
-                   gridN=1000, var_LambdaT=1.0, var_q=1.0):
-        '''
-        This function numerically integrates the KDE along the
-        EoS curve.
 
-        q_min  	:: Minimum value of mass-ratio for the EoS curve
-
-        q_max  	:: Maximum value of mass-ratio for the EoS curve
-
-        mc	:: Chirp mass (fixed to mean value of posterior)
-
-        eosfunc	 :: interpolation function of Λ = eosfunc(m)
-
-        max_mass_eos :: Maximum mass allowed by the EoS.
-
-        postfunc :: K(Λ, q) KDE of the posterior distr
-
-        gridN  :: Number of steps for the integration (default=1K)
-
-        var_LambdaT :: Standard deviation of the LambdT
-
-        var_q  :: Standard deviation of the mass-ratio
-
-        If for the choice of mass-ratio and mc, the masses of one
-        or both the object goes above the maximum mass of NS
-        allowed by the EoS, then the object(s) is(are) treated as
-        BH (Λ=0). If the masses are below the minimum mass, the
-        points are excludeds from the integral.
-
-        '''
-        # scale these appropriately to evaluate prior bounds
-        q_min *= var_q
-        q_max *= var_q
-
-        # get values for line integral
-        q = np.linspace(q_min, q_max, gridN)
-        m1, m2 = getMasses(q, mc)
-
-        m1, m2, q = self.apply_mass_constraint(m1, m2, q)
-        LambdaT = get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc)
-
-        # scale things back so they make sense with the KDE
-        LambdaT_scaled, q_scaled = LambdaT/var_LambdaT, q/var_q
-
-        # perform integration via trapazoidal approximation
-        dq = np.diff(q)
-        f = postfunc.evaluate(np.vstack((LambdaT_scaled, q_scaled)).T)
-        f_centers = 0.5*(f[1:] + f[:-1])
-        int_element = f_centers * dq
-
-        return [LambdaT_scaled, q_scaled, np.sum(int_element)]
-
-    def apply_mass_constraint(self, m1, m2, q):
-        '''
-        Apply constraints on masses based on the prior or posterior sample
-        spread.
-        '''
-        min_mass_violation_1 = m1 < self.minMass
-        min_mass_violation_2 = m2 < self.minMass
-        min_mass_violation = min_mass_violation_1 + min_mass_violation_2
-        m1 = m1[~min_mass_violation]
-        m2 = m2[~min_mass_violation]
-        q = q[~min_mass_violation]
-        return (m1, m2, q)
 
     def plot_func(self, eos_list, gridN=1000, filename='posterior_support.pdf',
                   full_mc_dist=False, usetitle=False):
@@ -501,7 +557,7 @@ class Model_selection:
         full_mc_dist :: The EOS curves in the eos_list will be plotted with
                         as a band bounded by the smallest and the largest
                         values of the chirp mass.
-        usetitle :: List of EoS on the title of the plot (Default: False) 
+        usetitle :: List of EoS on the title of the plot (Default: False)
         '''
         import pylab as pl
 
@@ -539,16 +595,17 @@ class Model_selection:
         m1, m2 = getMasses(q, mc)
         if full_mc_dist:
             m1_low, m2_low = getMasses(q, mc_low)
-            m1_low, m2_low, q_low = self.apply_mass_constraint(m1_low, m2_low,
-                                                               q)
+            m1_low, m2_low, q_low = apply_mass_constraint(m1_low, m2_low,
+                                                          q, self.minMass)
             m1_hi, m2_hi = getMasses(q, mc_hi)
-            m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi, q)
+            m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi,
+                                                            q, self.minMass)
             q_fill = np.intersect1d(q_low, q_hi)
             m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
             m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
             m1_low = m1_low[np.in1d(q_low, q_fill)]
             m2_low = m2_low[np.in1d(q_low, q_fill)]
-        m1, m2, q = self.apply_mass_constraint(m1, m2, q)
+        m1, m2, q = self.apply_mass_constraint(m1, m2, q, self.minMass)
 
         assert (type(eos_list) == str or type(eos_list) == list)
         if type(eos_list) == str:
@@ -683,6 +740,36 @@ class Stacking():
             joint_bf_array = np.ones(trials)
             self.all_bayes_factors_errors = []
         for prior_file, event_file in zip(self.event_priors, self.event_list):
+            '''NOTE:
+            It seems to be the logical thing to parallelize the run of the
+            individual events on different CPUs using ray. However, it does not
+            seem to be the right thing to do if we want to preserve the
+            scalability of the infrastructure. If the user wants to run this
+            on HTCondor, this is the sequence of events that will follow:
+            1. A condor DAG will be generated to submit accross multiple nodes
+               the multiple jobs such that the number of trials will be
+               distributed accross them.
+            2. In each node then ray will launch parallel processes across
+               various available CPU for the different events.
+            3. Each of these processes will now launch multiple ray processes
+               within the available CPUs in the same node to run trials that are
+               scheduled for this jobs on this Node.
+
+            This will not scale with large number of trials and events. The
+            ideal situation would be to first distribute the individual events
+            across different Nodes, and then from each node multiple jobs will
+            be spawned to multiple nodes that will distribute the trials
+            internally using ray. But it is not obvious to me how this can be
+            done in Condor. Also, running each event on a unique node will
+            require that Condor distributes each event. That will mean that
+            this code should have no way of computing the joint-Bayes-factor.
+            Which would mean that the joint-Bayes-factor computation will only
+            be possible on Condor. Thus, we have decided to keep this part of
+            the computation serial. We will be processing each event
+            sequentially. Thus, upon running the code, for each event ray will
+            spawn multiple processes across available cores and then upon
+            completion will move on to the next event. 
+            '''
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
             bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
