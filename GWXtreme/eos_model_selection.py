@@ -740,6 +740,37 @@ class Stacking():
             joint_bf_array = np.ones(trials)
             self.all_bayes_factors_errors = []
         for prior_file, event_file in zip(self.event_priors, self.event_list):
+            '''NOTE:
+            It seems to be the logical thing to parallelize the run of the
+            individual events on different CPUs using ray. However, it does not
+            seem to be the right thing to do if we want to preserve the
+            scalability of the infrastructure. If the user wants to run this
+            on HTCondor, this is the sequence of events that will follow:
+            1. A condor DAG will be generated to submit accross multiple nodes
+               the multiple jobs such that the number of trials will be
+               distributed accross them.
+            2. In each node then ray will launch parallel processes across
+               various available CPU for the different events.
+            3. Each of these processes will now launch multiple ray processes
+               within the available CPUs in the same node to run trials that are
+               scheduled for this jobs on this Node.
+
+            This will not scale with large number of trials and events. The
+            ideal situation would be to first distribute the individual events
+            across different Nodes, and then from each node multiple jobs will
+            be spawned to multiple nodes that will distribute the trials
+            internally using ray. But it is not obvious to me how this can be
+            done in Condor. Also, running each event on a unique node will
+            require that Condor distributes each event. That will mean that
+            this code should have no way of computing the joint-Bayes-factor.
+            Which would mean that the joint-Bayes-factor computation will only
+            be possible on Condor. Thus, we have decided to keep this part of
+            the computation serial. We will be processing each event
+            sequentially. Thus, upon running the code, for each event ray will
+            spawn multiple processes across available cores and then upon
+            completion will move on to the next event. 
+
+            '''
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
             bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
