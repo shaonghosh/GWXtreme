@@ -769,7 +769,6 @@ class Stacking():
             sequentially. Thus, upon running the code, for each event ray will
             spawn multiple processes across available cores and then upon
             completion will move on to the next event. 
-
             '''
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
