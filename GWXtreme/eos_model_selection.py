@@ -483,7 +483,10 @@ class Model_selection:
         if trials == 0:
             return (support2D1/support2D2)
 
-        ray.init()
+        if verbose:
+            ray.init(logging_level=1)
+        else:
+            ray.init(logging_level=40)
         cores = multiprocessing.cpu_count()
         if verbose:
             print("Total number of cores in this machine: {}".format(cores))
@@ -706,7 +709,7 @@ class Stacking():
             print('Number of prior and posterior files should be same')
             sys.exit(0)
 
-    def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None):
+    def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None, verbose=False):
         '''
         Loop through each event and compute the joint Bayes-factor.
         Each individual event's Bayes-factor can be accessed from the Stacking
@@ -774,7 +777,8 @@ class Stacking():
                                      priorFile=prior_file)
             bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
                                                        gridN=gridN,
-                                                       trials=trials)
+                                                       trials=trials,
+                                                       verbose=verbose)
             if type(bayes_factor) == np.float64:
                 joint_bf *= bayes_factor
                 self.all_bayes_factors.append(bayes_factor)
