@@ -32,5 +32,6 @@ stack_dict['joint_bf_array'] = joint_bf_array
 stack_dict["ref_eos"] = this_data['ref_eos']
 stack_dict["target_eos"] = this_data['target_eos']
 
-with open(args.output, 'w') as f:
+outfile = args.output + ".json"
+with open(outfile, 'w') as f:
         json.dump(stack_dict, f, indent=2, sort_keys=True)

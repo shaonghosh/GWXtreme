@@ -54,14 +54,14 @@ def main(args=None):
     if args.posteriorlist:
         stack_subfile_txt = '''universe = vanilla
     executable = ./comp_stacked_evidence
-    arguments = "--input {} --prior {} --target {} --reference {} --nums 40 --output {}"
+    arguments = "--input {} --prior {} --target {} --reference {} --nums 40 --output $(macrooutput)"
     output = output_$(macrotag).stdout
     error = error_$(macrotag).stderr
     log = logfile_$(macrotag).log
     getenv = True
     accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
     queue 1
-    '''.format(args.posteriorlist, args.priorlist, args.target, args.reference, args.output)
+    '''.format(args.posteriorlist, args.priorlist, args.target, args.reference)
 
         with open(args.stacksubfilename, 'w') as f:
             f.writelines(stack_subfile_txt)
@@ -79,6 +79,19 @@ def main(args=None):
 
         with open(args.joinsubfilename, 'w') as f:
             f.writelines(join_subfile_txt)
+
+        ### Write the DAG file ###
+        with open(args.dagfile, 'w') as f:
+            text_parent_child = "PARENT"
+            for ii in range(args.num):
+                text_parent_child += " " + str(ii)
+                text = '''JOB {} {}\nVARS {} macrooutput="{}/{}_{}.json"\nVARS {} macrotag="{}"\n\n'''.format(ii, args.stacksubfilename, ii, args.output, args.output, ii, ii, ii)
+                f.writelines(text)
+
+            text_join = '''JOB {} {}\nVARS {} macrotag="{}"\n'''.format(ii+1, args.joinsubfilename, ii+1, args.output)
+            f.writelines(text_join)
+            text_parent_child += " CHILD " + str(ii+1)
+            f.writelines(text_parent_child)
 
 
     if args.input:
