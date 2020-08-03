@@ -54,14 +54,14 @@ def main(args=None):
     if args.posteriorlist:
         stack_subfile_txt = '''universe = vanilla
     executable = ./comp_stacked_evidence
-    arguments = "--input {} --prior {} --target {} --reference {} --nums 40 --output $(macrooutput)"
+    arguments = "--input {} --prior {} --target {} --reference {} --nums {} --output $(macrooutput)"
     output = output_$(macrotag).stdout
     error = error_$(macrotag).stderr
     log = logfile_$(macrotag).log
     getenv = True
     accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
     queue 1
-    '''.format(args.posteriorlist, args.priorlist, args.target, args.reference)
+    '''.format(args.posteriorlist, args.priorlist, args.target, args.reference, args.trials)
 
         with open(args.stacksubfilename, 'w') as f:
             f.writelines(stack_subfile_txt)
