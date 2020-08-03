@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+
+
+import argparse
+
+from GWXtreme import eos_model_selection as ems
+
+def parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", action="store", help="Name of posterior file")
+    parser.add_argument("-p", "--prior", action="store", help="Name of prior file")
+    parser.add_argument("-N", "--nums", action="store", type=int, help="Number of trials")
+    parser.add_argument("-o", "--output", action="store", help="Name of output json file", default="bayes_factor.JSON")
+    parser.add_argument("-T", "--target", action="store", help="Name of the target EoS")
+    parser.add_argument("-r", "--reference", action="store", help="Name of the reference EoS")
+    return parser
+
+def main(args=None):
+    import os
+    import sys
+    import time
+    from GWXtreme import eos_model_selection as ems
+
+    p = parser()
+    args = p.parse_args()
+
+    start = time.time()
+    modsel = ems.Model_selection(posteriorFile=args.input, priorFile=args.prior)
+    x = modsel.computeEvidenceRatio(args.target, args.reference, trials=args.nums, save=args.output, verbose=True)
+    end = time.time()
+    print("\n Time taken to run on this node = {} s".format(end - start))
+
+# if __name__ == "__main__":
+#     main()
