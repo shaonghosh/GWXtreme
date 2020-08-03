@@ -77,8 +77,8 @@ def main(args=None):
     queue 1
     '''.format(args.output, args.output)
 
-        with open(args.stacksubfilename, 'w') as f:
-            f.writelines(stack_subfile_txt)
+        with open(args.joinsubfilename, 'w') as f:
+            f.writelines(join_subfile_txt)
 
 
     if args.input:
