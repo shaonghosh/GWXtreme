@@ -40,9 +40,12 @@ def main(args=None):
     args = p.parse_args()
 
     ## Create directories ##
-    os.system("mkdir -p output")
-    os.system("mkdir -p error")
-    os.system("mkdir -p logs")
+    output_dir = "output_{}".format(args.output)
+    os.system("mkdir -p {}".format(output_dir))
+    error_dir = "error_{}".format(args.output)
+    os.system("mkdir -p {}".format(error_dir))
+    logs_dir = "logs_{}".format(args.output)
+    os.system("mkdir -p {}".format(logs_dir))
     os.system("mkdir -p {}".format(args.output))
 
     ## Sanity checks ##
@@ -53,29 +56,29 @@ def main(args=None):
 
     if args.posteriorlist:
         stack_subfile_txt = '''universe = vanilla
-    executable = ./comp_stacked_evidence
-    arguments = "--input {} --prior {} --target {} --reference {} --nums {} --output $(macrooutput)"
-    output = output_$(macrotag).stdout
-    error = error_$(macrotag).stderr
-    log = logfile_$(macrotag).log
-    getenv = True
-    accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
-    queue 1
-    '''.format(args.posteriorlist, args.priorlist, args.target, args.reference, args.trials)
+executable = ./comp_stacked_evidence
+arguments = "--input {} --prior {} --target {} --reference {} --nums {} --output $(macrooutput)"
+output = {}/output_$(macrotag).stdout
+error = {}/error_$(macrotag).stderr
+log = {}/logfile_$(macrotag).log
+getenv = True
+accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
+queue 1
+'''.format(args.posteriorlist, args.priorlist, args.target, args.reference, args.trials, output_dir, error_dir, logs_dir)
 
         with open(args.stacksubfilename, 'w') as f:
             f.writelines(stack_subfile_txt)
 
         join_subfile_txt = '''universe = vanilla
-    executable = ./combine_stacked_results
-    arguments = "--json {} --output {}"
-    output = output_$(macrotag).stdout
-    error = error_$(macrotag).stderr
-    log = logfile_$(macrotag).log
-    getenv = True
-    accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
-    queue 1
-    '''.format(args.output, args.output)
+executable = ./combine_stacked_results
+arguments = "--json {} --output {}"
+output = {}/output_$(macrotag).stdout
+error = {}error_$(macrotag).stderr
+log = {}/logfile_$(macrotag).log
+getenv = True
+accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
+queue 1
+'''.format(args.output, args.output, output_dir, error_dir, logs_dir)
 
         with open(args.joinsubfilename, 'w') as f:
             f.writelines(join_subfile_txt)
@@ -99,13 +102,13 @@ def main(args=None):
         subfile_txt = '''universe = vanilla
 executable = ./comp_eos_evidence
 arguments = "--input $(macroinput) --prior $(macroprior) --target {} --reference {} --nums {} --output $(macrooutput)"
-output = output/output_$(macrotag).stdout
-error = error/error_$(macrotag).stderr
-log = logs/logfile_$(macrotag).log
+output = {}/output_$(macrotag).stdout
+error = {}/error_$(macrotag).stderr
+log = {}/logfile_$(macrotag).log
 getenv = True
 accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
 queue 1
-'''.format(args.target, args.reference, args.trials)
+'''.format(args.target, args.reference, args.trials, output_dir, error_dir, logs_dir)
 
         with open(args.subfilename, 'w') as f:
             f.writelines(subfile_txt)
@@ -114,13 +117,13 @@ queue 1
         subfile_txt ='''universe = vanilla
 executable = ./combine_results
 arguments = "--jsons {} --target {} --reference {} --output {}.json"
-output = output/output_join.stdout
-error = error/error_join.stderr
-log = logs/logfile_join.log
+output = {}/output_join.stdout
+error = {}/error_join.stderr
+log = {}/logfile_join.log
 getenv = True
 accounting_group = ligo.prod.o2.cbc.pe.lalinferencerapid
 queue 1
-'''.format(args.output, args.target, args.reference, args.output)
+'''.format(args.output, args.target, args.reference, args.output, output_dir, error_dir, logs_dir)
 
         with open(args.joinsubfilename, 'w') as f:
             f.writelines(subfile_txt)
