@@ -479,9 +479,9 @@ class Model_selection:
         # smoothed distribution
         # NOTE: this is known to introduce a bias into the mean
         # and variance estimate!
-
+        bayes_factor = support2D1/support2D2
         if trials == 0:
-            return (support2D1/support2D2)
+            return bayes_factor
 
         if verbose:
             ray.init(logging_level=1)
@@ -523,7 +523,7 @@ class Model_selection:
             bf_dict = {}
             bf_dict['ref_eos'] = EoS2
             bf_dict['target_eos'] = EoS1
-            bf_dict['bf'] = support2D1/support2D2
+            bf_dict['bf'] = bayes_factor
             bf_dict['bf_array'] = sup_array.tolist()
             # Making sure that the file extension is json
             if (save.split('.')[-1] != 'json') and (save.split('.')[-1] != 'JSON'):
@@ -534,7 +534,7 @@ class Model_selection:
                 print("Result saved in: {}".format(save))
 
         ray.shutdown()
-        return [support2D1/support2D2, sup_array]
+        return [bayes_factor, sup_array]
 
 
 
@@ -608,7 +608,7 @@ class Model_selection:
             m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
             m1_low = m1_low[np.in1d(q_low, q_fill)]
             m2_low = m2_low[np.in1d(q_low, q_fill)]
-        m1, m2, q = self.apply_mass_constraint(m1, m2, q, self.minMass)
+        m1, m2, q = apply_mass_constraint(m1, m2, q, self.minMass)
 
         assert (type(eos_list) == str or type(eos_list) == list)
         if type(eos_list) == str:

@@ -15,7 +15,7 @@ def parser():
     parser.add_argument("-r", "--reference", action="store", help="Name of the reference EoS")
     return parser
 
-def main(args=None):
+def main():
     import os
     import sys
     import time
@@ -30,5 +30,5 @@ def main(args=None):
     end = time.time()
     print("\n Time taken to run on this node = {} s".format(end - start))
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
