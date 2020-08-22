@@ -601,8 +601,8 @@ class Model_selection:
             m1_low, m2_low, q_low = apply_mass_constraint(m1_low, m2_low,
                                                           q, self.minMass)
             m1_hi, m2_hi = getMasses(q, mc_hi)
-            m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi,
-                                                            q, self.minMass)
+            m1_hi, m2_hi, q_hi = apply_mass_constraint(m1_hi, m2_hi,
+                                                       q, self.minMass)
             q_fill = np.intersect1d(q_low, q_hi)
             m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
             m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
@@ -771,7 +771,7 @@ class Stacking():
             the computation serial. We will be processing each event
             sequentially. Thus, upon running the code, for each event ray will
             spawn multiple processes across available cores and then upon
-            completion will move on to the next event. 
+            completion will move on to the next event.
             '''
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
