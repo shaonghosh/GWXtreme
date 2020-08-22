@@ -582,10 +582,10 @@ class Model_selection:
 
         support2D_matrix = support2Dgrid.reshape(len(lambdat_grid),
                                                  len(q_grid))
-        pl.pcolormesh(L_GRID, Q_GRID, support2D_matrix.T)
+        pl.pcolormesh(L_GRID, Q_GRID, support2D_matrix.T, shading='gouraud')
         pl.colorbar()
         pl.scatter(self.data['lambdat'], self.data['q'], marker='.', c='k',
-                   s=1, alpha=0.1)
+                   s=1, alpha=0.2)
 
         q_min = self.q_min*self.var_q
         q_max = self.q_max*self.var_q
