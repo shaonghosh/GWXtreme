@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+
+import argparse
+
+
+def parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", action="store", required=True,
+                        help="Name of file with list of posterior samples")
+    parser.add_argument("-p", "--prior", action="store", default=None,
+                        help="Name of file with list of prior samples")
+    parser.add_argument("-N", "--nums", action="store", type=int,
+                        help="Number of trials")
+    parser.add_argument("-o", "--output", action="store",
+                        help="Name of output json file", default="joint_bayes_factor.JSON")
+    parser.add_argument("-T", "--target", action="store",
+                        help="Name of the target EoS")
+    parser.add_argument("-r", "--reference", action="store",
+                        help="Name of the reference EoS")
+    return parser
+
+
+def main(args=None):
+    import os
+    import sys
+    import time
+
+    from GWXtreme import eos_model_selection as ems
+
+    p = parser()
+    args = p.parse_args()
+
+    with open(args.input, 'r') as f:
+        lines = f.readlines()
+        posterior_files = []
+        for line in lines:
+            posterior_files.append(line.split('\n')[0])
+
+    if args.prior is None:
+        prior_files = None
+    else:
+        with open(args.prior, 'r') as f:
+            lines = f.readlines()
+            prior_files = []
+            for line in lines:
+                prior_files.append(line.split('\n')[0])
+
+
+    start = time.time()
+    stackobj = ems.Stacking(posterior_files, event_priors=prior_files)
+    x = stackobj.stack_events(args.target, args.reference, trials=args.nums, save=args.output, verbose=True)
+    end = time.time()
+    print("\n Time taken to run on this node = {} s".format(end - start))
+
+if __name__ == "__main__":
+    main()
