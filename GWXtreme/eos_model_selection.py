@@ -582,7 +582,7 @@ class Model_selection:
 
         support2D_matrix = support2Dgrid.reshape(len(lambdat_grid),
                                                  len(q_grid))
-        pl.pcolormesh(L_GRID, Q_GRID, support2D_matrix.T)
+        pl.pcolormesh(L_GRID, Q_GRID, support2D_matrix.T, shading='auto')
         pl.colorbar()
         pl.scatter(self.data['lambdat'], self.data['q'], marker='.', c='k',
                    s=1, alpha=0.1)
@@ -601,14 +601,14 @@ class Model_selection:
             m1_low, m2_low, q_low = apply_mass_constraint(m1_low, m2_low,
                                                           q, self.minMass)
             m1_hi, m2_hi = getMasses(q, mc_hi)
-            m1_hi, m2_hi, q_hi = self.apply_mass_constraint(m1_hi, m2_hi,
+            m1_hi, m2_hi, q_hi = apply_mass_constraint(m1_hi, m2_hi,
                                                             q, self.minMass)
             q_fill = np.intersect1d(q_low, q_hi)
             m1_hi = m1_hi[np.in1d(q_hi, q_fill)]
             m2_hi = m2_hi[np.in1d(q_hi, q_fill)]
             m1_low = m1_low[np.in1d(q_low, q_fill)]
             m2_low = m2_low[np.in1d(q_low, q_fill)]
-        m1, m2, q = self.apply_mass_constraint(m1, m2, q, self.minMass)
+        m1, m2, q = apply_mass_constraint(m1, m2, q, self.minMass)
 
         assert (type(eos_list) == str or type(eos_list) == list)
         if type(eos_list) == str:
