@@ -367,7 +367,7 @@ class Model_selection:
         function for the mass and the tidal deformability.
         '''
         masses, lambdas = np.loadtxt(tidalFile, unpack=True)
-        self.minMass = np.min(masses)
+        # self.minMass = np.min(masses)
         Lambdas = lal.G_SI*lambdas*(1/(lal.MRSUN_SI*masses)**5)
         s = interp1d(masses, Lambdas)
         max_mass = np.max(masses)
@@ -394,7 +394,7 @@ class Model_selection:
         function for the mass and the tidal deformability.
         '''
         masses, radius, kappa = np.loadtxt(MRFile, unpack=True)
-        self.minMass = np.min(masses)
+        # self.minMass = np.min(masses)
         compactness = masses*lal.MRSUN_SI/radius
         Lambdas = (2/3)*kappa/(compactness**5)
         s = interp1d(masses, Lambdas)
