@@ -194,6 +194,16 @@ computes the bayes-factor for each new re-samples. Results from these
 various iteration are then used to compute the standard deviation of the
 bayes-factor, which gives us an estimate of the uncertainty of the bayes-factor.
 The application of this method however increases the computational requirement.
+To address the increased runtime due to the computational overload resulting 
+from these trials, from GWXtreme 0.3.0 we have introduced parallelization of 
+the trial Bayes-factor computation using Ray_. Currently, the code determines
+the number of cores available in a given machine and then distributes the number
+of trials as uniformly as it can across all the cores. Currently, no feature has
+been provided to micromanage this distribution. In a future release this will be
+included.
+
+**NOTE:** The Ray distribution may cause problems when running on JupyterHub. No
+problem occurs when running on Jupyter notebook.
 
 .. code-block:: python
    :linenos:
@@ -434,10 +444,11 @@ LALsuite_ installed in your environment can be obtained as follows:
 which will print the names of the recognized models in the standard I/O.
 
 .. _GW170817: https://arxiv.org/abs/1710.05832
-.. _paper: https://git.ligo.org/shaon.ghosh/gwxtreme-paper/blob/master/draft/main.pdf
+.. _paper: https://arxiv.org/abs/2104.08681
 .. _LVC Model selection paper: https://arxiv.org/abs/1908.01012
 .. _publicly available gravitational wave strain data: https://www.gw-openscience.org/catalog/GWTC-1-confident/html/
 .. _LALsuite: https://git.ligo.org/lscsoft/lalsuite
+.. _Ray: https://ray.io
 
 
 .. toctree::
