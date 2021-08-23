@@ -289,6 +289,18 @@ class Model_selection:
                                   yhigh=self.yhigh,
                                   bw=self.bw)
 
+    def getMinMass(self, eosname):
+        '''
+        This method obtains the minimum mass tolerated by an 
+        equation of state.
+        '''
+
+        eos = lalsim.SimNeutronStarEOSByName(eosname)
+        fam = lalsim.CreateSimNeutronStarFamily(eos)
+        min_mass = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+
+        return min_mass
+
     def getEoSInterp(self, eosname=None, m_min=1.0, N=100):
         '''
         This method accepts one of the NS native equations of state
@@ -344,6 +356,7 @@ class Model_selection:
         Lambdas = np.array(Lambdas)
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
+
         return [s, gravMass, Lambdas, max_mass]
 
     def getEoSInterpFromMLambdaFile(self, tidalFile):
@@ -373,6 +386,52 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
+    def getMR(self, eosname=None, m_min=1.0, N=100):
+        '''
+        Obtains the mass, radius, and kappa tolerated by
+        an equation of state
+        '''
+
+        if eosname is None:
+            print('Allowed equation of state models are:')
+            print(lalsim.SimNeutronStarEOSNames)
+            print('Pass the model name as a string')
+            return None
+        try:
+            assert eosname in list(lalsim.SimNeutronStarEOSNames)
+        except AssertionError:
+            print('EoS family is not available in lalsimulation')
+            print('Allowed EoS are :\n' + str(lalsim.SimNeutronStarEOSNames))
+            print('Make sure that if you are passing a custom file, it exists')
+            print('in the path that you have provided...')
+            sys.exit(0)
+
+        eos = lalsim.SimNeutronStarEOSByName(eosname)
+        fam = lalsim.CreateSimNeutronStarFamily(eos)
+        max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
+
+        # This is necessary so that interpolant is computed over the full range
+        # Keeping number upto 3 decimal places
+        # Not rounding up, since that will lead to RuntimeError
+        max_mass = int(max_mass*1000)/1000
+        masses = np.linspace(m_min, max_mass, N)
+        masses = masses[masses <= max_mass]
+        ms = []
+        rs = []
+        ks = []
+        for m in masses:
+            try:
+                rr = lalsim.SimNeutronStarRadius(m*lal.MSUN_SI, fam)
+                kk = lalsim.SimNeutronStarLoveNumberK2(m*lal.MSUN_SI, fam)
+                rs.append(rr)
+                ks.append(kk)
+                ms.append(m)
+            except RuntimeError:
+                break
+
+        return [ms, rs, ks]
+
+
     def getEoSInterpFromMRFile(self, MRFile):
         '''
         This method accepts the data from a file that have the
@@ -400,6 +459,40 @@ class Model_selection:
         s = interp1d(masses, Lambdas)
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
+
+    def getEoSInterpFrom_p_gs(self, p0, g1, g2, g3, N=100):
+        '''
+        Obtains the interpolant, minimum mass, and maximum
+        mass of an equation of state given p,g1,g2,g3.
+        '''
+
+        eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(p0,g1,g2,g3)
+        fam = lalsim.CreateSimNeutronStarFamily(eos)
+        m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+        max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
+
+        # This is necessary so that interpolant is computed over the full range
+        # Keeping number upto 3 decimal places
+        # Not rounding up, since that will lead to RuntimeError
+        max_mass = int(max_mass*1000)/1000
+        masses = np.linspace(m_min, max_mass, N)
+        masses = masses[masses <= max_mass]
+        Lambdas = []
+        gravMass = []
+        for m in masses:
+            try:
+                rr = lalsim.SimNeutronStarRadius(m*lal.MSUN_SI, fam)
+                kk = lalsim.SimNeutronStarLoveNumberK2(m*lal.MSUN_SI, fam)
+                cc = m*lal.MRSUN_SI/rr
+                Lambdas = np.append(Lambdas, (2/3)*kk/(cc**5))
+                gravMass = np.append(gravMass, m)
+            except RuntimeError:
+                break
+        Lambdas = np.array(Lambdas)
+        gravMass = np.array(gravMass)
+        s = interp1d(gravMass, Lambdas)
+        
+        return([s, m_min, max_mass])
 
     def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000,
                              save=None, trials=0, verbose=False):
