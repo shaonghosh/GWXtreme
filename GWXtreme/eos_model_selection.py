@@ -289,18 +289,6 @@ class Model_selection:
                                   yhigh=self.yhigh,
                                   bw=self.bw)
 
-    def getMinMass(self, eosname):
-        '''
-        This method obtains the minimum mass tolerated by an 
-        equation of state.
-        '''
-
-        eos = lalsim.SimNeutronStarEOSByName(eosname)
-        fam = lalsim.CreateSimNeutronStarFamily(eos)
-        min_mass = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
-
-        return min_mass
-
     def getEoSInterp(self, eosname=None, m_min=1.0, N=100):
         '''
         This method accepts one of the NS native equations of state
@@ -385,52 +373,6 @@ class Model_selection:
         s = interp1d(masses, Lambdas)
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
-
-    def getMR(self, eosname=None, m_min=1.0, N=100):
-        '''
-        Obtains the mass, radius, and kappa tolerated by
-        an equation of state
-        '''
-
-        if eosname is None:
-            print('Allowed equation of state models are:')
-            print(lalsim.SimNeutronStarEOSNames)
-            print('Pass the model name as a string')
-            return None
-        try:
-            assert eosname in list(lalsim.SimNeutronStarEOSNames)
-        except AssertionError:
-            print('EoS family is not available in lalsimulation')
-            print('Allowed EoS are :\n' + str(lalsim.SimNeutronStarEOSNames))
-            print('Make sure that if you are passing a custom file, it exists')
-            print('in the path that you have provided...')
-            sys.exit(0)
-
-        eos = lalsim.SimNeutronStarEOSByName(eosname)
-        fam = lalsim.CreateSimNeutronStarFamily(eos)
-        max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
-
-        # This is necessary so that interpolant is computed over the full range
-        # Keeping number upto 3 decimal places
-        # Not rounding up, since that will lead to RuntimeError
-        max_mass = int(max_mass*1000)/1000
-        masses = np.linspace(m_min, max_mass, N)
-        masses = masses[masses <= max_mass]
-        ms = []
-        rs = []
-        ks = []
-        for m in masses:
-            try:
-                rr = lalsim.SimNeutronStarRadius(m*lal.MSUN_SI, fam)
-                kk = lalsim.SimNeutronStarLoveNumberK2(m*lal.MSUN_SI, fam)
-                rs.append(rr)
-                ks.append(kk)
-                ms.append(m)
-            except RuntimeError:
-                break
-
-        return [ms, rs, ks]
-
 
     def getEoSInterpFromMRFile(self, MRFile):
         '''
@@ -520,7 +462,14 @@ class Model_selection:
 
         # generate interpolators for both EOS
 
-        if os.path.exists(EoS1):
+        if type(EoS1) == list:
+            [s1, _,
+             max_mass_eos1] = self.getEoSInterpFrom_piecewise(EoS1[0], 
+                                                              EoS1[1], 
+                                                              EoS1[2], 
+                                                              EoS1[3],
+                                                              N=1000)
+        elif os.path.exists(EoS1):
             if verbose:
                 print('Trying m-R-k file to compute EoS interpolant')
             try:
@@ -536,7 +485,14 @@ class Model_selection:
              max_mass_eos1] = self.getEoSInterp(eosname=EoS1,
                                                 m_min=self.minMass)
 
-        if os.path.exists(EoS2):
+        if type(EoS2) == list:
+            [s2, _,
+             max_mass_eos2] = self.getEoSInterpFrom_piecewise(EoS2[0], 
+                                                              EoS2[1], 
+                                                              EoS2[2], 
+                                                              EoS2[3],
+                                                              N=1000)
+        elif os.path.exists(EoS2):
             if verbose:
                 print('Trying m-R-k file to compute EoS interpolant')
             try:
