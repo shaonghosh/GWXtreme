@@ -664,6 +664,13 @@ class Model_selection:
         if type(eos_list) == str:
             eos_list = [eos_list]
         for eos in eos_list:
+            if type(eos) == list:
+                [s, _,
+                 max_mass_eos] = self.getEoSInterpFrom_piecewise(eos[0], 
+                                                                 eos[1], 
+                                                                 eos[2], 
+                                                                 eos[3],
+                                                                 N=1000)
             if os.path.exists(eos):
                 print('Trying m-R-k file to compute EoS interpolant')
                 try:
