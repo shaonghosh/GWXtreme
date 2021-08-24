@@ -460,13 +460,14 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def getEoSInterpFrom_p_gs(self, p0, g1, g2, g3, N=100):
+    def getEoSInterpFrom_piecewise(self, log_p0_SI, g1, g2, g3, N=100):
         '''
         Obtains the interpolant, minimum mass, and maximum
-        mass of an equation of state given p,g1,g2,g3.
+        mass of an equation of state given log_p0_SI, g1, g2, g3.
         '''
 
-        eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(p0,g1,g2,g3)
+        eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(log_p0_SI,
+                                                                   g1, g2, g3)
         fam = lalsim.CreateSimNeutronStarFamily(eos)
         m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
