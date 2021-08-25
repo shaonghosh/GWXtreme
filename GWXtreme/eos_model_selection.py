@@ -404,10 +404,18 @@ class Model_selection:
 
     def getEoSInterpFrom_piecewise(self, log_p0_SI, g1, g2, g3, N=100):
         '''
-        Obtains the interpolant, minimum mass, and maximum
-        mass of an equation of state given log_p0_SI, g1, g2, g3.
-        '''
+        This method accepts a NS equation of state in the form of a combination
+        of log_p0_SI, g1, g2, g3. It returns a list [s, m_min, max_mass]
+        where s is the interpolation function for the mass and the tidal
+        deformability.
 
+        log_p0_SI   :: log of the pressure in SI units
+
+        g1,g2,g3    :: The gammas of the piecewise polytrope between pressure and energy density.
+
+        N           :: Number of points that will be used for the
+                       construction of the interpolant.
+        '''
         eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(log_p0_SI,
                                                                    g1, g2, g3)
         fam = lalsim.CreateSimNeutronStarFamily(eos)
@@ -671,7 +679,7 @@ class Model_selection:
                                                                  eos[2], 
                                                                  eos[3],
                                                                  N=1000)
-            if os.path.exists(eos):
+            elif os.path.exists(eos):
                 print('Trying m-R-k file to compute EoS interpolant')
                 try:
                     [s, _, _,
