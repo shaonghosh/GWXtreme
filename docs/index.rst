@@ -180,6 +180,17 @@ equation of state.
   file with mass-tidal deformability information.
 
 
+* **From piecewise values:** The fourth way one can compute the bayes-factor is 
+  by supplying the pressure, and gammas of a neutron star for the given equation
+  of state. To invoke this method the user needs to supply the equation of state 
+  as a list of log_p0_SI, g1, g2, and g3 values. 
+
+  .. code-block:: python
+
+     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1=[33.269,2.830,3.445,3.348],
+                                              EoS2=[33.384,3.005,2.988,2.851])
+
+
 Advanced features:
 ..................
 
