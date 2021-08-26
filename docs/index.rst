@@ -181,7 +181,7 @@ equation of state.
 
 
 * **From piecewise values:** The fourth way one can compute the bayes-factor is 
-  by supplying the pressure, and gammas of a neutron star for the given equation
+  by supplying the pressure and gammas of a neutron star for the given equation
   of state. To invoke this method the user needs to supply the equation of state 
   as a list of log_p0_SI, g1, g2, and g3 values. 
 
