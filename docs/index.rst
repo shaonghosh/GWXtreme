@@ -180,12 +180,14 @@ equation of state.
   file with mass-tidal deformability information.
 
 
-* **From piecewise values:** The fourth way allows the computation of Bayes
-  factors from neutron star equation of state (eos) modeled using piecewise 
-  polytrope (cite: https://arxiv.org/abs/0812.2163). To invoke this method the
-  user needs to supply the equation of state as a list of log_p0_SI, gamma1, 
-  gamma2, and gamma3 values. log_p0_SI is the pressure and the gammas are the 
-  indexes for the density intervals of an eos.
+* **From piecewise values:** In `Read et al`_ the authors presented a technique 
+  of modeling equation of state of neutron stars using a four parameter 
+  polytropic models. Thee four parameters include the log of the pressure at a 
+  given density (logp1), and three adiabatic indices (Gamma1, Gamma2, Gamma3) 
+  that quantifies the steepness of the variation of pressure as a function of 
+  density at different regimes of the neutron star densities. GWXtreme also 
+  allows computation of the Bayes-factor for an equation of state characterized 
+  by these piecewise polytropic parameters.
 
   .. code-block:: python
 
@@ -462,6 +464,7 @@ which will print the names of the recognized models in the standard I/O.
 .. _publicly available gravitational wave strain data: https://www.gw-openscience.org/catalog/GWTC-1-confident/html/
 .. _LALsuite: https://git.ligo.org/lscsoft/lalsuite
 .. _Ray: https://ray.io
+.. _`Read et al`: https://arxiv.org/abs/0812.2163
 
 
 .. toctree::
