@@ -181,8 +181,8 @@ equation of state.
 
 
 * **From piecewise values:** In `Read et al`_ the authors presented a technique 
-  of modeling equation of state of neutron stars using a four parameter 
-  polytropic models. Thee four parameters include the log of the pressure at a 
+  of modeling the equation of state of neutron stars using a four parameter 
+  polytropic model. The four parameters include the log of the pressure at a 
   given density (logp1), and three adiabatic indices (Gamma1, Gamma2, Gamma3) 
   that quantifies the steepness of the variation of pressure as a function of 
   density at different regimes of the neutron star densities. GWXtreme also 
