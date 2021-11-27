@@ -180,14 +180,16 @@ equation of state.
   file with mass-tidal deformability information.
 
 
-* **From piecewise values:** In `Read et al`_ the authors presented a technique 
-  of modeling the equation of state of neutron stars using a four parameter 
-  polytropic model. The four parameters include the log of the pressure at a 
-  given density (logp1), and three adiabatic indices (Gamma1, Gamma2, Gamma3) 
-  that quantifies the steepness of the variation of pressure as a function of 
-  density at different regimes of the neutron star densities. GWXtreme also 
-  allows computation of the Bayes-factor for an equation of state characterized 
-  by these piecewise polytropic parameters.
+* **From parametrized models:** An additional method of supplying an equation 
+  of state is through parametrized models. The spectral decomposition and
+  piecewise polytropic methods are supported by GWXtreme. In `Read et al`_ the 
+  authors presented a technique of modeling the equation of state of neutron 
+  stars using a four parameter polytropic model. The four parameters include the 
+  log of the pressure at a given density (logp1), and three adiabatic indices 
+  (Gamma1, Gamma2, Gamma3) that quantifies the steepness of the variation of 
+  pressure as a function of density at different regimes of the neutron star 
+  densities. GWXtreme allows for the computation of the Bayes-factor for an 
+  equation of state characterized by either one of these two parametrized models.
 
   .. code-block:: python
 
@@ -433,6 +435,18 @@ This will generate a plot in the present working directory where the results
 from the stacking of Bayes-factor w.r.t `SLY` will be plotted for the equation
 of states `AP4, SLY, H4`. The location of the plotted file can be configured
 using the kwarg `filename`.
+
+
+Evidence tool for parametrized models:
+""""""""""""""""""""""""""""""""""""""
+The evidence for an parametrized equation of state can be computed as well.
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme import eos_model_selection as ems
+   modsel = ems.Model_selection(posteriorFile='samples.dat', spectral=False)
+   modsel.eos_evidence([33.269,2.83,3.445,3.348])
 
 
 
