@@ -916,16 +916,16 @@ class Stacking():
 
         return joint_bf
 
-    def joint_evidence(self, EoS1, gridN=1000):
+    def joint_evidence(self, EoS, gridN=1000):
         '''
         Loop through each event and compute the joint evidence. Each individual 
         event's evidence can be accessed from the Stacking object, using 
         Stacking.all_evidences.
 
-        EoS1 :: The list of parameters that characterise the equation of state. 
-                This can be in the form of either one of the two supported 
-                parametrized equations of state: Spectral Decomposition and 
-                Piecewise Polytrope.
+        EoS :: The list of parameters that characterise the equation of state. 
+               This can be in the form of either one of the two supported 
+               parametrized equations of state: Spectral Decomposition and 
+               Piecewise Polytrope.
 
         gridN :: Number of grid points over which the line-integral is
                  computed (Default = 1000).
@@ -937,9 +937,7 @@ class Stacking():
             modsel = Model_selection(posteriorFile=event_file,
                                      priorFile=prior_file)
 
-            evidence = modsel.eos_evidence(EoS1, gridN=gridN)
-            joint_evidence *= evidence
-            self.all_evidences.append(evidence)
+            joint_evidence *= modsel.eos_evidence(EoS, gridN=gridN)
 
         return joint_evidence
 
