@@ -235,7 +235,7 @@ def get_trials(fd):
 
 
 class Model_selection:
-    def __init__(self, posteriorFile, priorFile=None):
+    def __init__(self, posteriorFile, priorFile=None, spectral=False):
         '''
         Initiates the Bayes factor calculator with the posterior
         samples from the uniform LambdaT, dLambdaT parameter
@@ -250,7 +250,11 @@ class Model_selection:
                          obtained from the prior file. If this is not
                          supplied, the posterior samples will be used
                          to determine the bounds.
+
+        spectral      :: Distinguishes between piecewise polytrope and spectral 
+                         decomposition method.
         '''
+
         self.data = np.recfromtxt(posteriorFile, names=True)
 
         if priorFile:
@@ -288,6 +292,9 @@ class Model_selection:
                                   ylow=0.0,
                                   yhigh=self.yhigh,
                                   bw=self.bw)
+
+        # Attribute that distinguishes parametrization method
+        self.spectral = spectral
 
     def getEoSInterp(self, eosname=None, m_min=1.0, N=100):
         '''
@@ -344,6 +351,7 @@ class Model_selection:
         Lambdas = np.array(Lambdas)
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
+
         return [s, gravMass, Lambdas, max_mass]
 
     def getEoSInterpFromMLambdaFile(self, tidalFile):
@@ -401,8 +409,54 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000,
-                             save=None, trials=0, verbose=False):
+    def getEoSInterp_parametrized(self, params, N=100):
+        '''
+        This method accepts a four parameter description of the neutron star 
+        equation of state, and returns a list [s, m_min, max_mass] where s is 
+        the interpolation function for the mass and the tidal deformability.
+
+        params      :: Four parameter list.
+
+        N           :: Number of points that will be used for the
+                       construction of the interpolant.
+        '''
+
+        if self.spectral == False:
+            log_p1_SI, g1, g2, g3 = params
+            eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(log_p1_SI, g1, g2, g3)
+        else:
+            g0, g1, g2, g3 = params
+            eos = lalsim.SimNeutronStarEOS4ParameterSpectralDecomposition(g0, g1, g2, g3)
+
+        fam = lalsim.CreateSimNeutronStarFamily(eos)
+        m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+        max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
+
+        # This is necessary so that interpolant is computed over the full range
+        # Keeping number upto 3 decimal places
+        # Not rounding up, since that will lead to RuntimeError
+        max_mass = int(max_mass*1000)/1000
+        masses = np.linspace(m_min, max_mass, N)
+        masses = masses[masses <= max_mass]
+        Lambdas = []
+        gravMass = []
+        for m in masses:
+            try:
+                rr = lalsim.SimNeutronStarRadius(m*lal.MSUN_SI, fam)
+                kk = lalsim.SimNeutronStarLoveNumberK2(m*lal.MSUN_SI, fam)
+                cc = m*lal.MRSUN_SI/rr
+                Lambdas = np.append(Lambdas, (2/3)*kk/(cc**5))
+                gravMass = np.append(gravMass, m)
+            except RuntimeError:
+                break
+        Lambdas = np.array(Lambdas)
+        gravMass = np.array(gravMass)
+        s = interp1d(gravMass, Lambdas)
+        
+        return([s, m_min, max_mass])
+
+    def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000, save=None, 
+                             trials=0, verbose=False):
         '''
         This method computes the ratio of evidences for two
         tabulated EoS. It first checks if a file exists with
@@ -426,7 +480,11 @@ class Model_selection:
 
         # generate interpolators for both EOS
 
-        if os.path.exists(EoS1):
+        if type(EoS1) == list:
+            [s1, _,
+             max_mass_eos1] = self.getEoSInterp_parametrized(EoS1, N=1000)
+
+        elif os.path.exists(EoS1):
             if verbose:
                 print('Trying m-R-k file to compute EoS interpolant')
             try:
@@ -442,7 +500,11 @@ class Model_selection:
              max_mass_eos1] = self.getEoSInterp(eosname=EoS1,
                                                 m_min=self.minMass)
 
-        if os.path.exists(EoS2):
+        if type(EoS2) == list:
+            [s2, _,
+             max_mass_eos2] = self.getEoSInterp_parametrized(EoS2, N=1000)
+
+        elif os.path.exists(EoS2):
             if verbose:
                 print('Trying m-R-k file to compute EoS interpolant')
             try:
@@ -536,7 +598,29 @@ class Model_selection:
         ray.shutdown()
         return [support2D1/support2D2, sup_array]
 
+    def eos_evidence(self, params, gridN=1000):
+        '''
+        This method computes the evidence for a parametrized EoS.
 
+        params      :: Four parameter list.
+        gridN       :: Number of grid points over which the
+                       line-integral is computed. (Default = 1000)
+        '''
+
+        # generate interpolator for eos
+        [s, _,
+         max_mass_eos] = self.getEoSInterp_parametrized(params, N=1000)
+
+        # compute support
+        [lambdat_eos,
+         q_eos, support2D] = integrator(self.q_min, self.q_max, self.mc_mean,
+                                        s, max_mass_eos, self.kde,
+                                        gridN=gridN,
+                                        var_LambdaT=self.var_LambdaT,
+                                        var_q=self.var_q,
+                                        minMass=self.minMass)
+
+        return(support2D)
 
     def plot_func(self, eos_list, gridN=1000, filename='posterior_support.pdf',
                   full_mc_dist=False, usetitle=False):
@@ -562,6 +646,7 @@ class Model_selection:
                         values of the chirp mass.
         usetitle :: List of EoS on the title of the plot (Default: False)
         '''
+
         import pylab as pl
 
         pl.clf()
@@ -614,7 +699,14 @@ class Model_selection:
         if type(eos_list) == str:
             eos_list = [eos_list]
         for eos in eos_list:
-            if os.path.exists(eos):
+            if type(eos) == list:
+                [s, _,
+                 max_mass_eos] = self.getEoSInterp_parametrized(eos, N=1000)
+
+                # Reducing the text in the figure legend
+                eos = [np.round(eos[0], 4), np.round(eos[1], 4), np.round(eos[2], 4),np.round(eos[3], 4)]
+
+            elif os.path.exists(eos):
                 print('Trying m-R-k file to compute EoS interpolant')
                 try:
                     [s, _, _,
@@ -709,7 +801,8 @@ class Stacking():
             print('Number of prior and posterior files should be same')
             sys.exit(0)
 
-    def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None, verbose=False):
+    def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None, 
+                     verbose=False):
         '''
         Loop through each event and compute the joint Bayes-factor.
         Each individual event's Bayes-factor can be accessed from the Stacking
@@ -779,6 +872,7 @@ class Stacking():
                                                        gridN=gridN,
                                                        trials=trials,
                                                        verbose=verbose)
+
             if type(bayes_factor) == np.float64:
                 joint_bf *= bayes_factor
                 self.all_bayes_factors.append(bayes_factor)
@@ -821,6 +915,31 @@ class Stacking():
             joint_bf = [joint_bf, joint_bf_array]
 
         return joint_bf
+
+    def joint_evidence(self, EoS, gridN=1000):
+        '''
+        Loop through each event and compute the joint evidence. Each individual 
+        event's evidence can be accessed from the Stacking object, using 
+        Stacking.all_evidences.
+
+        EoS :: The list of parameters that characterise the equation of state. 
+               This can be in the form of either one of the two supported 
+               parametrized equations of state: Spectral Decomposition and 
+               Piecewise Polytrope.
+
+        gridN :: Number of grid points over which the line-integral is
+                 computed (Default = 1000).
+        '''
+        joint_evidence = 1.0
+        self.all_evidences = []  # To be populated by B.Fs from all events
+
+        for prior_file, event_file in zip(self.event_priors, self.event_list):
+            modsel = Model_selection(posteriorFile=event_file,
+                                     priorFile=prior_file)
+
+            joint_evidence *= modsel.eos_evidence(EoS, gridN=gridN)
+
+        return joint_evidence
 
     def plot_stacked_bf(self, eos_list=None, ref_eos='SLY', trials=0,
                         gridN=1000, filename='stacked_bf.pdf'):
@@ -870,6 +989,7 @@ class Stacking():
         for eos in eos_list:
             print('Stacking events for model: {}'.format(eos))
             this_eos_bf = self.stack_events(eos, ref_eos, trials=trials)
+
             if trials > 0:
                 bf_combined.append(this_eos_bf[0])
                 d_bf_combined.append(2*np.std(this_eos_bf[-1]))

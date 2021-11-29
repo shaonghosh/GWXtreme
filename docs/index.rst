@@ -180,6 +180,23 @@ equation of state.
   file with mass-tidal deformability information.
 
 
+* **From parametrized models:** An additional method of supplying an equation 
+  of state is through parametrized models. The spectral decomposition and
+  piecewise polytropic methods are supported by GWXtreme. In `Read et al`_ the 
+  authors presented a technique of modeling the equation of state of neutron 
+  stars using a four parameter polytropic model. The four parameters include the 
+  log of the pressure at a given density (logp1), and three adiabatic indices 
+  (Gamma1, Gamma2, Gamma3) that quantifies the steepness of the variation of 
+  pressure as a function of density at different regimes of the neutron star 
+  densities. GWXtreme allows for the computation of the Bayes-factor for an 
+  equation of state characterized by either one of these two parametrized models.
+
+  .. code-block:: python
+
+     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1=[33.269,2.830,3.445,3.348],
+                                              EoS2=[33.384,3.005,2.988,2.851])
+
+
 Advanced features:
 ..................
 
@@ -420,6 +437,18 @@ of states `AP4, SLY, H4`. The location of the plotted file can be configured
 using the kwarg `filename`.
 
 
+Evidence tool for parametrized models:
+""""""""""""""""""""""""""""""""""""""
+The evidence for an parametrized equation of state can be computed as well.
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme import eos_model_selection as ems
+   modsel = ems.Model_selection(posteriorFile='samples.dat', spectral=False)
+   modsel.eos_evidence([33.269,2.83,3.445,3.348])
+
+
 
 
 General Comments:
@@ -449,6 +478,7 @@ which will print the names of the recognized models in the standard I/O.
 .. _publicly available gravitational wave strain data: https://www.gw-openscience.org/catalog/GWTC-1-confident/html/
 .. _LALsuite: https://git.ligo.org/lscsoft/lalsuite
 .. _Ray: https://ray.io
+.. _`Read et al`: https://arxiv.org/abs/0812.2163
 
 
 .. toctree::
