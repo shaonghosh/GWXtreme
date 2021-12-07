@@ -78,7 +78,7 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
 # The integrator function #
 def integrator(q_min, q_max, mc, eosfunc, max_mass_eos, postfunc,
-               gridN=1000, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
+               gridN=100, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
     '''
     This function numerically integrates the KDE along the
     EoS curve.
@@ -254,8 +254,7 @@ class Model_selection:
                                   xlow=0.0,
                                   xhigh=None,
                                   ylow=0.0,
-                                  yhigh=self.yhigh,
-                                  bw=self.bw)
+                                  yhigh=self.yhigh)
 
         # Attribute that distinguishes parametrization method
         self.spectral = spectral
@@ -373,7 +372,7 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def getEoSInterp_parametrized(self, params, N=100):
+    def getEoSInterp_parametrized(self, params, N=100,m_min=1.0):
         '''
         This method accepts a four parameter description of the neutron star 
         equation of state, and returns a list [s, m_min, max_mass] where s is 
@@ -385,7 +384,7 @@ class Model_selection:
                        construction of the interpolant.
         '''
 
-        if self.spectral == False:
+        if not self.spectral :
             log_p1_SI, g1, g2, g3 = params
             eos = lalsim.SimNeutronStarEOS4ParameterPiecewisePolytrope(log_p1_SI, g1, g2, g3)
         else:
@@ -393,7 +392,6 @@ class Model_selection:
             eos = lalsim.SimNeutronStarEOS4ParameterSpectralDecomposition(g0, g1, g2, g3)
 
         fam = lalsim.CreateSimNeutronStarFamily(eos)
-        m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
 
         # This is necessary so that interpolant is computed over the full range
@@ -562,18 +560,18 @@ class Model_selection:
         ray.shutdown()
         return [support2D1/support2D2, sup_array]
 
-    def eos_evidence(self, params, gridN=1000):
+    def eos_evidence(self, params, gridN=100):
         '''
         This method computes the evidence for a parametrized EoS.
 
         params      :: Four parameter list.
         gridN       :: Number of grid points over which the
-                       line-integral is computed. (Default = 1000)
+                       line-integral is computed. (Default = 100)
         '''
 
         # generate interpolator for eos
         [s, _,
-         max_mass_eos] = self.getEoSInterp_parametrized(params, N=1000)
+         max_mass_eos] = self.getEoSInterp_parametrized(params, N=100)
 
         # compute support
         [lambdat_eos,
@@ -765,6 +763,12 @@ class Stacking():
             print('Number of prior and posterior files should be same')
             sys.exit(0)
         self.spectral=spectral
+        modsel=[]
+        for prior_file, event_file in zip(self.event_priors, self.event_list):
+            modsel.append(Model_selection(posteriorFile=event_file,
+                                     priorFile=prior_file,spectral=self.spectral))
+        self.modsel=modsel
+        self.Nevents=len(modsel)
     def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None, 
                      verbose=False):
         '''
@@ -799,7 +803,7 @@ class Stacking():
         if trials > 0:
             joint_bf_array = np.ones(trials)
             self.all_bayes_factors_errors = []
-        for prior_file, event_file in zip(self.event_priors, self.event_list):
+        for i in range(self.Nevents):
             '''NOTE:
             It seems to be the logical thing to parallelize the run of the
             individual events on different CPUs using ray. However, it does not
@@ -830,8 +834,7 @@ class Stacking():
             spawn multiple processes across available cores and then upon
             completion will move on to the next event. 
             '''
-            modsel = Model_selection(posteriorFile=event_file,
-                                     priorFile=prior_file)
+            modsel = self.modsel[i]
             bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
                                                        gridN=gridN,
                                                        trials=trials,
@@ -880,7 +883,7 @@ class Stacking():
 
         return joint_bf
 
-    def joint_evidence(self, EoS, gridN=1000):
+    def joint_evidence(self, EoS, gridN=100):
         '''
         Loop through each event and compute the joint evidence. Each individual 
         event's evidence can be accessed from the Stacking object, using 
@@ -897,9 +900,8 @@ class Stacking():
         joint_evidence = 1.0
         self.all_evidences = []  # To be populated by B.Fs from all events
 
-        for prior_file, event_file in zip(self.event_priors, self.event_list):
-            modsel = Model_selection(posteriorFile=event_file,
-                                     priorFile=prior_file,spectral=self.spectral)
+        for i in range(self.Nevents):
+            modsel = self.modsel[i]
 
             joint_evidence *= modsel.eos_evidence(EoS, gridN=gridN)
 

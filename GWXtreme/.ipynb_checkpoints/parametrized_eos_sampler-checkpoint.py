@@ -15,7 +15,8 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
-import .eos_model_selection as eos_model
+import numpy as np
+from .eos_model_selection import Stacking
 import h5py
 import corner
 from multiprocessing import cpu_count, Pool
@@ -65,7 +66,7 @@ class mcmc_sampler():
         self.nsamples=Nsamples
         self.ndim=ndim
         self.spectral=spectral
-        self.eosmodel=eos_model.Stacking(posterior_files,spectral=spectral)
+        self.eosmodel=Stacking(posterior_files,spectral=spectral)
         self.npool=npool
     def log_post(self,p):
         '''
@@ -83,8 +84,7 @@ class mcmc_sampler():
         tr=is_valid_eos(params,self.priorbounds)
         if not tr:
             return -np.inf
-        else:
-            return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=100)))
+        return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=100)))
     
     def initialize_walkers(self):
         
@@ -134,7 +134,7 @@ class mcmc_sampler():
               self.samples=sampler.get_chain()
               self.logp=sampler.get_log_prob() 
     
-     def save_data(self):
+    def save_data(self):
         '''
         This method saves the posterior samples 
         of the spectral parameters and there corresponding
@@ -147,7 +147,7 @@ class mcmc_sampler():
         
 
         
-     def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho=False):
+    def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho=False):
         '''
         This method plots the posterior of the spectral
         parameters in a corner plot and also the pressure
