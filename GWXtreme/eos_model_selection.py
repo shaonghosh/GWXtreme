@@ -114,7 +114,7 @@ def join_json_files(list_of_jsons, nametag="model"):
 
 # The integrator function #
 def integrator(q_min, q_max, mc, eosfunc, max_mass_eos, postfunc,
-               gridN=100, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
+               gridN=1000, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
     '''
     This function numerically integrates the KDE along the
     EoS curve.
@@ -596,7 +596,7 @@ class Model_selection:
         ray.shutdown()
         return [support2D1/support2D2, sup_array]
 
-    def eos_evidence(self, params, gridN=100):
+    def eos_evidence(self, params, gridN=1000):
         '''
         This method computes the evidence for a parametrized EoS.
 
@@ -839,7 +839,7 @@ class Stacking():
         if trials > 0:
             joint_bf_array = np.ones(trials)
             self.all_bayes_factors_errors = []
-        for i in range(self.Nevents):
+        for modsel in self.modsel:
             '''NOTE:
             It seems to be the logical thing to parallelize the run of the
             individual events on different CPUs using ray. However, it does not
@@ -870,7 +870,7 @@ class Stacking():
             spawn multiple processes across available cores and then upon
             completion will move on to the next event. 
             '''
-            modsel = self.modsel[i]
+            
             bayes_factor = modsel.computeEvidenceRatio(EoS1, EoS2,
                                                        gridN=gridN,
                                                        trials=trials,
@@ -919,7 +919,7 @@ class Stacking():
 
         return joint_bf
 
-    def joint_evidence(self, EoS, gridN=100):
+    def joint_evidence(self, EoS, gridN=1000):
         '''
         Loop through each event and compute the joint evidence. Each individual 
         event's evidence can be accessed from the Stacking object, using 
@@ -936,8 +936,7 @@ class Stacking():
         joint_evidence = 1.0
         self.all_evidences = []  # To be populated by B.Fs from all events
 
-        for i in range(self.Nevents):
-            modsel = self.modsel[i]
+        for modsel in self.modsel
 
             joint_evidence *= modsel.eos_evidence(EoS, gridN=gridN)
 
