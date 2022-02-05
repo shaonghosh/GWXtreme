@@ -31,7 +31,7 @@ from pop_models.astro_models import eos
 
 
 class mcmc_sampler():
-    def __init__(self, posterior_files, prior_bounds, outfile, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=1):
+    def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=1):
         '''
         Initiates Parametric EoS mcmc Sampler Class
         that also stacks over multiple events,from the
@@ -41,7 +41,11 @@ class mcmc_sampler():
         Pressure or 4 parameter piec-wise polytrope.
             
         prior_bounds :: dictionary containining prior bounds
-                            of spectral parameters
+                        of spectral parameters. example for spectral:
+                        {'gamma1':{'params':{"min":0.2,"max":2.00}},
+                        'gamma2':{'params':{"min":-1.6,"max":1.7}},
+                        'gamma3':{'params':{"min":-0.6,"max":0.6}},
+                        'gamma4':{'params':{"min":-0.02,"max":0.02}}}
                               
         posterior_files :: Array containing full paths to 
                                 single event PE posterior files
@@ -57,6 +61,10 @@ class mcmc_sampler():
             
         
         npool     ::    Number of cpu's to use for parallelization
+        
+        gridN     ::    Number of grid points to evaluate evidence integral
+                        over, while evaluationg log_prob
+                        
         '''
         
         self.posteriorfiles=posterior_files
@@ -68,6 +76,11 @@ class mcmc_sampler():
         self.spectral=spectral
         self.eosmodel=Stacking(posterior_files,spectral=spectral)
         self.npool=npool
+        self.gridN=gridN
+        
+        if spectral:
+            self.keys={"gamma{}".format(i) for i in range(1,4)}
+        
     def log_post(self,p):
         '''
         This mathod accepts an array of spectral parameters
@@ -80,11 +93,12 @@ class mcmc_sampler():
                 over q
         '''
         
-        params={"gamma{}".format(i):np.array([p[i-1]]) for i in range(1,len(p)+1)}
-        tr=is_valid_eos(params,self.priorbounds)
-        if not tr:
+        params={k:par for k,par in zip(self.keys,p)}
+        
+        if not is_valid_eos(params,self.priorbounds):
             return -np.inf
-        return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=100)))
+        
+        return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=self.gridN)))
     
     def initialize_walkers(self):
         
