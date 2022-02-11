@@ -420,6 +420,7 @@ class Model_selection:
         N           :: Number of points that will be used for the
                        construction of the interpolant.
         '''
+        print("enter")
 
         if self.spectral == False:
             log_p1_SI, g1, g2, g3 = params
@@ -428,10 +429,14 @@ class Model_selection:
             g0, g1, g2, g3 = params
             eos = lalsim.SimNeutronStarEOS4ParameterSpectralDecomposition(g0, g1, g2, g3)
 
+        print("past eos")
         fam = lalsim.CreateSimNeutronStarFamily(eos)
+        print("past fam")
         m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+        print("past m_min")
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
 
+        print("past mass")
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
@@ -449,6 +454,7 @@ class Model_selection:
                 gravMass = np.append(gravMass, m)
             except RuntimeError:
                 break
+        print("past try")
         Lambdas = np.array(Lambdas)
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
