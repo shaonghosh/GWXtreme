@@ -75,43 +75,6 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
     return LambdaT
 
-
-def join_json_files(list_of_jsons, nametag="model"):
-    '''
-    This helper function joins the JSON files from the output of the Bayes
-    factor computation methods in Model_selection and Stacking into one single
-    JSON file that can be directly used for further analysis.
-
-    list_of_jsons :: A list of all the JSON files that needs to be combined.
-    nametag :: Use this option to create a name-tag for the resulting JSON
-    files
-    '''
-    alldata = []
-    reference_models = []
-    for json_file in list_of_jsons:
-        with open(json_file, 'r') as f:
-            thisdata = json.load(f)
-            alldata.append(thisdata)
-            reference_models.append(thisdata['ref_eos'])
-
-    # Keep unique names of the equation of state models
-    reference_models = np.unique(np.array(reference_models)).tolist()
-
-    for model in reference_models:
-        combined_dict = {}
-        for data in alldata:
-            if model == data['ref_eos']:
-                value = {'joint_bf': data['joint_bf'],
-                         'joint_bf_array': data['joint_bf_array'],
-                         'all_bf': data['all_bf'],
-                         'all_bf_err': data['all_bf_err']}
-                combined_dict[data['target_eos']] = value
-
-        filename = 'bayes_factors_against_' + model + '_' + nametag + '.json'
-        with open(filename, 'w') as f:
-            json.dump(combined_dict, f, indent=2, sort_keys=True)
-
-
 # The integrator function #
 def integrator(q_min, q_max, mc, eosfunc, max_mass_eos, postfunc,
                gridN=1000, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
@@ -420,7 +383,6 @@ class Model_selection:
         N           :: Number of points that will be used for the
                        construction of the interpolant.
         '''
-        print("enter")
 
         if self.spectral == False:
             log_p1_SI, g1, g2, g3 = params
@@ -429,14 +391,10 @@ class Model_selection:
             g0, g1, g2, g3 = params
             eos = lalsim.SimNeutronStarEOS4ParameterSpectralDecomposition(g0, g1, g2, g3)
 
-        print("past eos")
         fam = lalsim.CreateSimNeutronStarFamily(eos)
-        print("past fam")
         m_min = lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
-        print("past m_min")
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
 
-        print("past mass")
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
@@ -454,7 +412,6 @@ class Model_selection:
                 gravMass = np.append(gravMass, m)
             except RuntimeError:
                 break
-        print("past try")
         Lambdas = np.array(Lambdas)
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
