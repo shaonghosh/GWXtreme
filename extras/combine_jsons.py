@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import argparse
 
 def join_json_files(list_of_jsons, nametag="model"):
     '''
@@ -36,3 +37,17 @@ def join_json_files(list_of_jsons, nametag="model"):
         with open(filename, 'w') as f:
             json.dump(combined_dict, f, indent=2, sort_keys=True)
 
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-C", "--cache", action="store",
+                                          help="A cache of JSON file names that needs to be joined")
+    parser.add_argument("-t", "--tag", action="store", help="name-tag of the output JSON file")
+
+    args = parser.parse_args()
+
+    # Opens the json file containing a list of the json filenames
+    with open(args.cache,"r") as f:
+        list_of_jsons = json.load(f)
+
+    join_json_files(list_of_jsons, nametag=args.tag)

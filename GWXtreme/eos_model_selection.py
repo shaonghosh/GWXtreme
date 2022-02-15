@@ -75,6 +75,7 @@ def get_LambdaT_for_eos(m1, m2, max_mass_eos, eosfunc):
 
     return LambdaT
 
+
 # The integrator function #
 def integrator(q_min, q_max, mc, eosfunc, max_mass_eos, postfunc,
                gridN=1000, var_LambdaT=1.0, var_q=1.0, minMass=0.1):
