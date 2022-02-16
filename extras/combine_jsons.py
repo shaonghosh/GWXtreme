@@ -46,8 +46,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Opens the json file containing a list of the json filenames
+    # Opens the cache file containing a list of the json filenames
     with open(args.cache,"r") as f:
-        list_of_jsons = json.load(f)
+        raw_names = f.readlines()
 
-    join_json_files(list_of_jsons, nametag=args.tag)
+
+    cleaned_names = []
+    for name in raw_names: cleaned_names.append(name[:-1])
+
+    join_json_files(cleaned_names, nametag=args.tag)
