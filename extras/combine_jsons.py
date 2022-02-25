@@ -1,3 +1,4 @@
+import os
 import json
 import numpy as np
 import argparse
@@ -15,10 +16,20 @@ def join_json_files(list_of_jsons, nametag="model"):
     alldata = []
     reference_models = []
     for json_file in list_of_jsons:
-        with open(json_file, 'r') as f:
-            thisdata = json.load(f)
-            alldata.append(thisdata)
-            reference_models.append(thisdata['ref_eos'])
+        if os.path.exists(json_file):
+            with open(json_file, 'r') as f:
+                try: 
+                    thisdata = json.load(f)
+                    reference_models.append(thisdata['ref_eos'])
+                    alldata.append(thisdata)
+                except TypeError: 
+                    print("{} is not formatted correctly".format(json_file))
+                    quit()
+                except KeyError:
+                    print("{} is not formatted correctly".format(json_file))
+                    quit()
+        else:
+            print("Could not find {}".format(json_file))
 
     # Keep unique names of the equation of state models
     reference_models = np.unique(np.array(reference_models)).tolist()
@@ -41,17 +52,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-C", "--cache", action="store",
-                                          help="A cache of JSON file names that needs to be joined")
-    parser.add_argument("-t", "--tag", action="store", help="name-tag of the output JSON file")
+                        help="A cache of JSON file names that needs to be joined")
+    parser.add_argument("-t", "--tag", action="store",
+                        help="name-tag of the output JSON file")
 
     args = parser.parse_args()
 
-    # Opens the cache file containing a list of the json filenames
-    with open(args.cache,"r") as f:
-        raw_names = f.readlines()
+    file_names = list(np.loadtxt(args.cache, dtype=str))
 
-
-    cleaned_names = []
-    for name in raw_names: cleaned_names.append(name[:-1])
-
-    join_json_files(cleaned_names, nametag=args.tag)
+    join_json_files(file_names, nametag=args.tag)
