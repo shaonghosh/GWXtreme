@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Shaon Ghosh, Xiaoshu Liu
+# Copyright (C) 2022 Shaon Ghosh, Michael Camilo, Xiaoshu Liu
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the

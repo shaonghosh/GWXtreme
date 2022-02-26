@@ -20,11 +20,11 @@ sys.path.insert(0, os.path.abspath('../GWXtreme'))
 
 project = 'GWXtreme'
 copyright = '2019, Shaon Ghosh'
-author = 'Shaon Ghosh'
+author = 'Shaon Ghosh, Michael Camilo'
 master_doc = 'index'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.1'
+release = '0.3.1'
 
 
 # -- General configuration ---------------------------------------------------
