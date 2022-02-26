@@ -48,3 +48,16 @@ def join_json_files(list_of_jsons, nametag="model"):
         with open(filename, 'w') as f:
             json.dump(combined_dict, f, indent=2, sort_keys=True)
 
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-C", "--cache", action="store",
+                        help="A cache of JSON file names that needs to be joined")
+    parser.add_argument("-t", "--tag", action="store",
+                        help="name-tag of the output JSON file")
+
+    args = parser.parse_args()
+
+    file_names = list(np.loadtxt(args.cache, dtype=str))
+
+    join_json_files(file_names, nametag=args.tag)
