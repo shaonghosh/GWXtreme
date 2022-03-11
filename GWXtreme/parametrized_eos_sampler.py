@@ -22,16 +22,17 @@ import corner
 from multiprocessing import cpu_count, Pool
 import time
 import emcee as mc
-from pop_models.applications.bns.iid_gaussian_mass_with_eos.prior import is_valid_eos
-from pop_models.astro_models import eos
-
+from .eos_prior import is_valid_eos,eos_p_of_rho, spectral_eos,polytrope_eos
+import lalsimulation
+import matplotlib.pyplot as plt
 
 
 
 
 
 class mcmc_sampler():
-    def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=1):
+    def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100,
+		 Nsamples=10000, ndim=4, spectral=True,npool=1,Ns=4000):
         '''
         Initiates Parametric EoS mcmc Sampler Class
         that also stacks over multiple events,from the
@@ -65,6 +66,9 @@ class mcmc_sampler():
         gridN     ::    Number of grid points to evaluate evidence integral
                         over, while evaluationg log_prob
                         
+        Ns        ::    Number of samples to which the single event q and 
+                        lambda_tilde posteriors are downsampled
+                        
         '''
         
         self.posteriorfiles=posterior_files
@@ -74,12 +78,19 @@ class mcmc_sampler():
         self.nsamples=Nsamples
         self.ndim=ndim
         self.spectral=spectral
-        self.eosmodel=Stacking(posterior_files,spectral=spectral)
+        self.eosmodel=Stacking(posterior_files,spectral=spectral,Ns=Ns)
         self.npool=npool
         self.gridN=gridN
         
+        
         if spectral:
-            self.keys={"gamma{}".format(i) for i in range(1,4)}
+            self.keys=["gamma{}".format(i) for i in range(1,5)]
+            self.eos=spectral_eos
+        else:
+            self.keys=['logP']
+            for i in range(1,4):
+                self.keys.append("gamma{}".format(i))
+            self.eos=polytrope_eos
         
     def log_post(self,p):
         '''
@@ -93,9 +104,9 @@ class mcmc_sampler():
                 over q
         '''
         
-        params={k:par for k,par in zip(self.keys,p)}
+        params={k:np.array([par]) for k,par in zip(self.keys,p)}
         
-        if not is_valid_eos(params,self.priorbounds):
+        if not is_valid_eos(params,self.priorbounds,spectral=self.spectral):
             return -np.inf
         
         return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=self.gridN)))
@@ -112,10 +123,19 @@ class mcmc_sampler():
         n=0
         p0=[]
         while True:
-            g=np.array([np.random.uniform(self.spectral_bounds["gamma{}".format(i)]["params"]["min"],self.spectral_bounds["gamma{}".format(i)]["params"]["max"]) for i in range(1,5)])
-            params={"gamma{}".format(i):np.array([g[i-1]]) for i in range(1,len(g)+1)}
+            g=np.array([np.random.uniform(self.priorbounds[k]["params"]["min"],self.priorbounds[k]["params"]["max"]) for k in self.keys])
+            params={k:np.array([g[i]]) for i,k in enumerate(self.keys)}
     
-            if(is_valid_eos(params,self.priorbounds)):
+            if(is_valid_eos(params,self.priorbounds,spectral=self.spectral)):
+                try:
+                    post=self.log_post(g)
+                except ValueError as e:
+                    print(e)
+                    print(g,n)
+                    continue
+                if(post==np.nan_to_num(-np.inf)):
+                    continue
+
                 p0.append(g)
                 n+=1
             if(n>=self.nwalkers):
@@ -161,7 +181,7 @@ class mcmc_sampler():
         
 
         
-    def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho=False):
+    def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho={'plot':False,'true_eos':None}):
         '''
         This method plots the posterior of the spectral
         parameters in a corner plot and also the pressure
@@ -216,28 +236,36 @@ class mcmc_sampler():
                         ax.axvline(x=Tr[xi],color='orange')
                         ax.axhline(y=Tr[yi],color='orange')
                         ax.plot(Tr[xi],Tr[yi],color='orange')
-                fig['corner']=fig_corner
+            fig['corner']=fig_corner
                         
-        if(p_vs_rho):
+        if(p_vs_rho['plot']):
             logp=[]
-            rho=np.logspace(17.25,18.25,1000)
+            rho=np.logspace(17.1,18.25,1000)
             
 
             for s in samples:
-                params=(s[0],s[1],s[2],s[3])
-                lp=np.zeros(len(rho))
-                p=eos.spectral_eos_p_of_rho(rho,params)
-                arg1=np.where(p>0.)
-                lp[arg1]=np.log10(p[arg1])
-                logp.append(lp)
+                params=(s[0], s[1], s[2], s[3])
+                
+                p=eos_p_of_rho(rho,self.eos(params))
+                
+                logp.append(p)
     
             logp=np.array(logp)
             logp_CIup=np.array([np.quantile(logp[:,i],0.95) for i in range(len(rho))])
             logp_CIlow=np.array([np.quantile(logp[:,i],0.05) for i in range(len(rho))])
             logp_med=np.array([np.quantile(logp[:,i],0.5) for i in range(len(rho))])
-            fig_eos,ax_eos
-            ax_eos.errorbar(np.log10(rho),logp_med,color='cyan',yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,capsize=1.5,ecolor='cyan',fmt='')
+            fig_eos,ax_eos=plt.subplots(1,figsize=(12,12))
+            ax_eos.fill_between(np.log10(rho),logp_CIlow,logp_CIup,color='cyan',alpha=.5,label='GWXtreme',zorder=1.)
             ax_eos.set_xlabel(r'$\log10{\frac{\rho}{g cm^-3}}$',fontsize=20)
             ax_eos.set_ylabel(r'$log10(\frac{p}{dyne cm^{-2}})$',fontsize=20)
+            if(p_vs_rho['true_eos'] is not None):
+                    if type(p_vs_rho['true_eos']) is tuple:
+                        logp=eos_p_of_rho(rho,self.eos(p_vs_rho['true_eos']))
+                        
+                    else:
+                        logp=eos_p_of_rho(rho,lalsimulation.SimNeutronStarEOSByName(p_vs_rho['true_eos']))
+                        
+                    ax_eos.plot(np.log10(rho),logp,color='black', linewidth=3.5)
+                        
             fig['p_vs_rho']=(fig_eos,ax_eos)
         return fig
