@@ -900,7 +900,7 @@ class Stacking():
         joint_evidence = 1.0
         self.all_evidences = []  # To be populated by B.Fs from all events
 
-        for modsel in self.modsel
+        for modsel in self.modsel:
 
             joint_evidence *= modsel.eos_evidence(EoS, gridN=gridN)
 

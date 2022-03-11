@@ -22,7 +22,7 @@ import corner
 from multiprocessing import cpu_count, Pool
 import time
 import emcee as mc
-from pop_models.applications.bns.iid_gaussian_mass_with_eos.prior import is_valid_eos
+from .eos_prior import is_valid_eos
 from pop_models.astro_models import eos
 
 
@@ -31,7 +31,8 @@ from pop_models.astro_models import eos
 
 
 class mcmc_sampler():
-    def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=1):
+    def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100,
+		 Nsamples=10000, ndim=4, spectral=True,npool=1):
         '''
         Initiates Parametric EoS mcmc Sampler Class
         that also stacks over multiple events,from the
@@ -224,9 +225,9 @@ class mcmc_sampler():
             
 
             for s in samples:
-                params=(s[0],s[1],s[2],s[3])
+                params=(s[0], s[1], s[2], s[3])
                 lp=np.zeros(len(rho))
-                p=eos.spectral_eos_p_of_rho(rho,params)
+                p=eos_prior.spectral_eos_p_of_rho(rho,params)
                 arg1=np.where(p>0.)
                 lp[arg1]=np.log10(p[arg1])
                 logp.append(lp)
@@ -236,7 +237,9 @@ class mcmc_sampler():
             logp_CIlow=np.array([np.quantile(logp[:,i],0.05) for i in range(len(rho))])
             logp_med=np.array([np.quantile(logp[:,i],0.5) for i in range(len(rho))])
             fig_eos,ax_eos
-            ax_eos.errorbar(np.log10(rho),logp_med,color='cyan',yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,capsize=1.5,ecolor='cyan',fmt='')
+            ax_eos.errorbar(np.log10(rho),logp_med,color='cyan',
+	 		    yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,
+			    capsize=1.5,ecolor='cyan',fmt='')
             ax_eos.set_xlabel(r'$\log10{\frac{\rho}{g cm^-3}}$',fontsize=20)
             ax_eos.set_ylabel(r'$log10(\frac{p}{dyne cm^{-2}})$',fontsize=20)
             fig['p_vs_rho']=(fig_eos,ax_eos)
