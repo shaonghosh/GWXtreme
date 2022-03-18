@@ -22,9 +22,9 @@ import corner
 from multiprocessing import cpu_count, Pool
 import time
 import emcee as mc
-from .eos_prior import is_valid_eos
-from pop_models.astro_models import eos
-
+from .eos_prior import is_valid_eos,eos_p_of_rho, spectral_eos,polytrope_eos
+import lalsimulation
+import matplotlib.pyplot as plt
 
 
 
@@ -79,8 +79,10 @@ class mcmc_sampler():
         self.npool=npool
         self.gridN=gridN
         
+        
         if spectral:
-            self.keys={"gamma{}".format(i) for i in range(1,4)}
+            self.keys=["gamma{}".format(i) for i in range(1,5)]
+            self.eos=spectral_eos
         
     def log_post(self,p):
         '''
@@ -94,7 +96,7 @@ class mcmc_sampler():
                 over q
         '''
         
-        params={k:par for k,par in zip(self.keys,p)}
+        params={k:np.array([par]) for k,par in zip(self.keys,p)}
         
         if not is_valid_eos(params,self.priorbounds):
             return -np.inf
@@ -113,7 +115,7 @@ class mcmc_sampler():
         n=0
         p0=[]
         while True:
-            g=np.array([np.random.uniform(self.spectral_bounds["gamma{}".format(i)]["params"]["min"],self.spectral_bounds["gamma{}".format(i)]["params"]["max"]) for i in range(1,5)])
+            g=np.array([np.random.uniform(self.priorbounds["gamma{}".format(i)]["params"]["min"],self.priorbounds["gamma{}".format(i)]["params"]["max"]) for i in range(1,5)])
             params={"gamma{}".format(i):np.array([g[i-1]]) for i in range(1,len(g)+1)}
     
             if(is_valid_eos(params,self.priorbounds)):
@@ -162,7 +164,7 @@ class mcmc_sampler():
         
 
         
-    def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho=False):
+    def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho={'plot':False,'true_eos':None}):
         '''
         This method plots the posterior of the spectral
         parameters in a corner plot and also the pressure
@@ -217,30 +219,38 @@ class mcmc_sampler():
                         ax.axvline(x=Tr[xi],color='orange')
                         ax.axhline(y=Tr[yi],color='orange')
                         ax.plot(Tr[xi],Tr[yi],color='orange')
-                fig['corner']=fig_corner
+            fig['corner']=fig_corner
                         
-        if(p_vs_rho):
+        if(p_vs_rho['plot']):
             logp=[]
             rho=np.logspace(17.25,18.25,1000)
             
 
             for s in samples:
                 params=(s[0], s[1], s[2], s[3])
-                lp=np.zeros(len(rho))
-                p=eos_prior.spectral_eos_p_of_rho(rho,params)
-                arg1=np.where(p>0.)
-                lp[arg1]=np.log10(p[arg1])
-                logp.append(lp)
+                
+                p=eos_p_of_rho(rho,self.eos(params))
+                
+                logp.append(p)
     
             logp=np.array(logp)
             logp_CIup=np.array([np.quantile(logp[:,i],0.95) for i in range(len(rho))])
             logp_CIlow=np.array([np.quantile(logp[:,i],0.05) for i in range(len(rho))])
             logp_med=np.array([np.quantile(logp[:,i],0.5) for i in range(len(rho))])
-            fig_eos,ax_eos
+            fig_eos,ax_eos=plt.subplots(1,figsize=(12,12))
             ax_eos.errorbar(np.log10(rho),logp_med,color='cyan',
-	 		    yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,
-			    capsize=1.5,ecolor='cyan',fmt='')
+	 		yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,
+			capsize=1.5,ecolor='cyan',fmt='')
             ax_eos.set_xlabel(r'$\log10{\frac{\rho}{g cm^-3}}$',fontsize=20)
             ax_eos.set_ylabel(r'$log10(\frac{p}{dyne cm^{-2}})$',fontsize=20)
+            if(p_vs_rho['true_eos'] is not None):
+                    if type(p_vs_rho['true_eos']) is tuple:
+                        logp=eos_p_of_rho(rho,self.eos(p_vs_rho['true_eos']))
+                        
+                    else:
+                        logp=eos_p_of_rho(rho,lalsimulation.SimNeutronStarEOSByName(p_vs_rho['true_eos']))
+                        
+                    ax_eos.plot(np.log10(rho),logp,color='black', linewidth=3.5)
+                        
             fig['p_vs_rho']=(fig_eos,ax_eos)
         return fig

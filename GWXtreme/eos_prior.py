@@ -24,7 +24,28 @@ import h5py
 
 largest_ns_mass = 1.97
 
-MassRangeType = typing.List[typing.Tuple[Numeric,Numeric]]
+def eos_p_of_rho(rho,eos):
+    import lalsimulation
+    FAM=lalsimulation.CreateSimNeutronStarFamily(eos)
+    p_max_i = min(6e35, lalsimulation.SimNeutronStarEOSMaxPressure(eos))
+    log10_p_grid = numpy.linspace(*numpy.log10([5e31, p_max_i]), 128)
+    p_grid = numpy.power(10.0, log10_p_grid)
+    rho_grid = numpy.empty_like(p_grid)
+    for j, p in numpy.ndenumerate(p_grid):
+                h = lalsimulation.SimNeutronStarEOSPseudoEnthalpyOfPressure(p, eos)
+                rho_grid[j] = (
+                    lalsimulation.SimNeutronStarEOSRestMassDensityOfPseudoEnthalpy(
+                        h, eos,
+                    )
+                )
+
+
+    log10_rho_grid = numpy.log10(rho_grid)
+    log10_p_out = numpy.interp(
+                numpy.log10(rho), log10_rho_grid, log10_p_grid,
+                left=numpy.NINF, right=numpy.NINF,
+            )
+    return log10_p_out
 
 
 def spectral_eos(eos_parameters: tuple) -> typing.Any:
@@ -39,9 +60,18 @@ def spectral_eos(eos_parameters: tuple) -> typing.Any:
 
     return eos
 
-def spectral_eos_adiabatic_index(
-        x: Numeric, spectral_parameters: tuple,
-    ) -> Numeric:
+def polytrope_eos(eos_parameters: tuple) -> typing.Any:
+    import lalsimulation
+
+    logP1, gamma1, gamma2, gamma3 = eos_parameters
+
+    return lalsimulation.SimNeutronStarEOS4ParameterPiecewisePolytrope(
+        logP1,
+        gamma1, gamma2, gamma3,
+    )
+
+
+def spectral_eos_adiabatic_index(x,spectral_parameters):
     x_sq = x * x
     x_cu = x_sq * x
 
@@ -57,6 +87,11 @@ def spectral_eos_adiabatic_index(
     return numpy.exp(log_gamma)
 
 
+_x_min = 0.0
+_x_max = 12.3081
+_x_grid = numpy.linspace(_x_min, _x_max, 500)
+
+
 
 def is_valid_adiabatic_index(spectral_parameters: tuple):
     # Confirm that the adiabatic index is within a tolerable range.
@@ -64,19 +99,6 @@ def is_valid_adiabatic_index(spectral_parameters: tuple):
     return (0.6 < Gamma).all() and (Gamma < 4.5).all()
 
 
-_x_min = 0.0
-_x_max = 12.3081
-_x_grid = numpy.linspace(_x_min, _x_max, 500)
-
-def polytrope_eos(eos_parameters: tuple) -> typing.Any:
-    import lalsimulation
-
-    logP1, gamma1, gamma2, gamma3 = eos_parameters
-
-    return lalsimulation.SimNeutronStarEOS4ParameterPiecewisePolytrope(
-        logP1,
-        gamma1, gamma2, gamma3,
-    )
 
 
 def has_enough_points(eos: typing.Any) -> bool:
@@ -147,12 +169,12 @@ def eos_mass_range(eos_fam: typing.Any) -> typing.Tuple[float,float]:
 def is_valid_eos(
         parameters, prior_settings,
         eos_coordinates="spectral", largest_ns_mass=largest_ns_mass,
-        require_mass_ranges: typing.Optional[MassRangeType]=None,
+        require_mass_ranges=None,
     ):
     import lalsimulation
     if(eos_coordinates=="spectral"):
         
-        gamma1, gamma2, gamma3, gamma4 = parameters['gamma1'],parameters[' gamma2'],parameters[' gamma3'],parameters[' gamma4']
+        gamma1, gamma2, gamma3, gamma4 = parameters['gamma1'],parameters['gamma2'],parameters['gamma3'],parameters['gamma4']
 
         params_shape = gamma1.shape
 
@@ -233,9 +255,9 @@ def is_valid_eos(
                     valid[i] = False
     elif(eos_coordinates=="polytropic"):
         
-        logP, gamma1, gamma2, gamma3 =  parameters["logP"],
-            parameters['gamma1'],
-            parameters['gamma2'],
+        logP, gamma1, gamma2, gamma3 =  parameters["logP"],\
+            parameters['gamma1'],\
+            parameters['gamma2'],\
             parameters['gamma3']
 
         params_shape = logP.shape
