@@ -144,7 +144,7 @@ def is_valid_adiabatic_index(spectral_parameters: tuple):
     
     spectral_parameters :: (gamma1,gamma2,gamma3,gamma4), spectral 
                             parameters describing the eos.
-    ''''
+    '''
     
     Gamma = spectral_eos_adiabatic_index(_x_grid, spectral_parameters)
     return (0.6 < Gamma).all() and (Gamma < 4.5).all()
