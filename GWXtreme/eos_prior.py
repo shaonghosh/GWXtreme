@@ -248,7 +248,7 @@ def eos_mass_range(eos_fam: typing.Any) -> typing.Tuple[float,float]:
 
 def is_valid_eos(
         parameters, prior_settings,
-        eos_coordinates="spectral", largest_ns_mass=largest_ns_mass,
+        spectral=True, largest_ns_mass=largest_ns_mass,
         require_mass_ranges=None,
     ):
     
@@ -259,17 +259,17 @@ def is_valid_eos(
     and enough points for interpolation are all satisfied simultaneously.
     
     parameters          ::   A choice of the four parameters,  (gamma1,gamma2,
-                             gamma3,gamma4) if eos_coordinates='spectral', or
-                             (\log p_0,\Gamma1,\Gamma2,\Gamma3) if eos_coordinates
-                             ='polytropic'.
+                             gamma3,gamma4) if spectral=True , or
+                             (\log p_0,\Gamma1,\Gamma2,\Gamma3) if spectral=
+                             'polytropic'.
     prior_settings      ::   A dictionary containing the allowed range of eos parameters
-                             . example for eos_coordinates='spectral' : {'gamma1':{'params'
+                             . example for spectral=True : {'gamma1':{'params'
                              :{"min":0.2,"max":2.00}},'gamma2':{'params':{"min":-1.6,"max":
                              1.7}},'gamma3':{'params':{"min":-0.6,"max":0.6}},'gamma4':{
                              'params':{"min":-0.02,"max":0.02}}} .
                           
-    eos_coordinates     ::    Specifies eos parametrization, one of 'spectral' or 'polytropic'
-                              default is 'spectral'.
+    spectral            ::    Specifies eos parametrization, if True then spectral eos is 
+                              considered. if False, polytropic eos is considered.
                         
     
     largest_ns_mass     ::    Largest observed NS mass in solar units. default is 1.97 .
@@ -279,7 +279,7 @@ def is_valid_eos(
                               
     '''
                           
-    if(eos_coordinates=="spectral"):
+    if(spectral):
         
         gamma1, gamma2, gamma3, gamma4 = parameters['gamma1'],parameters['gamma2'],parameters['gamma3'],parameters['gamma4']
 
@@ -360,7 +360,7 @@ def is_valid_eos(
                 else:
                     
                     valid[i] = False
-    elif(eos_coordinates=="polytropic"):
+    else:
         
         logP, gamma1, gamma2, gamma3 =  parameters["logP"],\
             parameters['gamma1'],\
@@ -438,8 +438,8 @@ def is_valid_eos(
                 else:
                     
                     valid[i] = False
-    else:
-         raise ValueError("Does not have a known EOS coordinate system.")
     return valid
+
+
 
 

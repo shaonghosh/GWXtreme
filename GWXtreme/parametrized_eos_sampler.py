@@ -83,6 +83,11 @@ class mcmc_sampler():
         if spectral:
             self.keys=["gamma{}".format(i) for i in range(1,5)]
             self.eos=spectral_eos
+        else:
+            self.keys=['logP']
+            for i in range(1,4):
+                self.keys.append("gamma{}".format(i))
+            self.eos=polytrope_eos
         
     def log_post(self,p):
         '''
@@ -98,7 +103,7 @@ class mcmc_sampler():
         
         params={k:np.array([par]) for k,par in zip(self.keys,p)}
         
-        if not is_valid_eos(params,self.priorbounds):
+        if not is_valid_eos(params,self.priorbounds,spectral=self.spectral):
             return -np.inf
         
         return np.nan_to_num(np.log(self.eosmodel.joint_evidence(p,gridN=self.gridN)))
@@ -115,10 +120,10 @@ class mcmc_sampler():
         n=0
         p0=[]
         while True:
-            g=np.array([np.random.uniform(self.priorbounds["gamma{}".format(i)]["params"]["min"],self.priorbounds["gamma{}".format(i)]["params"]["max"]) for i in range(1,5)])
-            params={"gamma{}".format(i):np.array([g[i-1]]) for i in range(1,len(g)+1)}
+            g=np.array([np.random.uniform(self.priorbounds[k]["params"]["min"],self.priorbounds[k]["params"]["max"]) for k in self.keys])
+            params={k:np.array([g[i]]) for i,k in enumerate(self.keys)}
     
-            if(is_valid_eos(params,self.priorbounds)):
+            if(is_valid_eos(params,self.priorbounds,spectral=self.spectral)):
                 p0.append(g)
                 n+=1
             if(n>=self.nwalkers):
