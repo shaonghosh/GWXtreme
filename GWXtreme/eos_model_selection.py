@@ -199,7 +199,7 @@ def get_trials(fd):
 
 
 class Model_selection:
-    def __init__(self, posteriorFile, priorFile=None, spectral=False):
+    def __init__(self, posteriorFile, priorFile=None, spectral=False,Ns=4000):
         '''
         Initiates the Bayes factor calculator with the posterior
         samples from the uniform LambdaT, dLambdaT parameter
@@ -217,10 +217,24 @@ class Model_selection:
 
         spectral      :: Distinguishes between piecewise polytrope and spectral 
                          decomposition method.
+                         
+        Ns            :: Number of Samples to be used for KDE. (Using all samples 
+                         from PE will make it very slow)
+                         
         '''
-
-        self.data = np.recfromtxt(posteriorFile, names=True)
-
+        if(posteriorFile[-2:]=='h5'):
+            f=h5py.File(posteriorFile,'r')
+            data=np.array(f['TaylorF2-LS']['posterior_samples'])
+            f.close()
+            drop_frac=1
+            size=int(len(np.array(data['mass_1_source']))*drop_frac)
+            Ind=np.arange(size).astype(np.int64)
+            
+            m1,m2,q,mc,LambdaT=np.array(data['mass_1_source'])[Ind],np.array(data['mass_2_source'])[Ind],np.array(data['mass_ratio'])[Ind],np.array(data['chirp_mass_source'])[Ind],np.array(data['lambda_tilde'])[Ind]
+            self.data={'m1_source':m1,'m2_source':m2,'q':q,'mc_source':mc,'lambdat':LambdaT}
+        else:
+            self.data = np.recfromtxt(posteriorFile, names=True)
+        print(len(self.data['m1_source']))
         if priorFile:
             self.prior = np.recfromtxt(priorFile, names=True)
             self.minMass = np.min(self.prior['m2_source'])
@@ -229,31 +243,32 @@ class Model_selection:
             self.q_min = np.min(self.prior['q'])
         else:
             self.prior = None
-            self.minMass = np.min(self.data['m2_source'])  # min posterior mass
-            self.maxMass = np.max(self.data['m1_source'])  # max posterior mass
-            self.q_max = np.max(self.data['q'])
-            self.q_min = np.min(self.data['q'])
-
+            self.minMass = np.min(self.data['m2_source'][0::int(len(self.data['q'])/Ns)])  # min posterior mass
+            self.maxMass = np.max(self.data['m1_source'][0::int(len(self.data['q'])/Ns)])  # max posterior mass
+            self.q_max = np.max(self.data['q'][0::int(len(self.data['q'])/Ns)])
+            self.q_min = np.min(self.data['q'][0::int(len(self.data['q'])/Ns)])
+        self.min_mass=0.8
+        self.m_min=0.8
         # store useful parameters
         self.mc_mean = np.mean(self.data['mc_source'])
 
         # whiten data
-        self.var_LambdaT = np.std(self.data['lambdat'])
-        self.var_q = np.std(self.data['q'])
+        self.var_LambdaT = np.std(self.data['lambdat'][0::int(len(self.data['q'])/Ns)])
+        self.var_q = np.std(self.data['q'][0::int(len(self.data['q'])/Ns)])
 
         self.q_max /= self.var_q
         self.q_min /= self.var_q
         self.yhigh = 1.0/self.var_q  # For reflection boundary condition
 
-        self.margPostData = np.vstack((self.data['lambdat']/self.var_LambdaT,
-                                       self.data['q']/self.var_q)).T
+        self.margPostData = np.vstack((self.data['lambdat'][0::int(len(self.data['q'])/Ns)]/self.var_LambdaT,
+                                       self.data['q'][0::int(len(self.data['q'])/Ns)]/self.var_q)).T
         self.bw = len(self.margPostData)**(-1/6.)  # Scott's bandwidth factor
 
         # Compute the KDE for the marginalized posterior distribution #
         self.kde = Bounded_2d_kde(self.margPostData,
                                   xlow=0.0,
                                   xhigh=None,
-                                  ylow=0.0,
+                                  ylow=None,
                                   yhigh=self.yhigh)
 
         # Attribute that distinguishes parametrization method
@@ -372,7 +387,7 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def getEoSInterp_parametrized(self, params, N=100,m_min=1.0):
+    def getEoSInterp_parametrized(self, params, N=100,m_min=0.8):
         '''
         This method accepts a four parameter description of the neutron star 
         equation of state, and returns a list [s, m_min, max_mass] where s is 
@@ -393,10 +408,11 @@ class Model_selection:
 
         fam = lalsim.CreateSimNeutronStarFamily(eos)
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
-
+        
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
+
         max_mass = int(max_mass*1000)/1000
         masses = np.linspace(m_min, max_mass, N)
         masses = masses[masses <= max_mass]
@@ -571,7 +587,7 @@ class Model_selection:
 
         # generate interpolator for eos
         [s, _,
-         max_mass_eos] = self.getEoSInterp_parametrized(params, N=100)
+         max_mass_eos] = self.getEoSInterp_parametrized(params, N=100, m_min=self.m_min)
 
         # compute support
         [lambdat_eos,
@@ -580,7 +596,7 @@ class Model_selection:
                                         gridN=gridN,
                                         var_LambdaT=self.var_LambdaT,
                                         var_q=self.var_q,
-                                        minMass=self.minMass)
+                                        minMass=self.min_mass)
 
         return(support2D)
 
