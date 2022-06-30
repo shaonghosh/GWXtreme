@@ -412,9 +412,10 @@ class Model_selection:
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
-
+        min_mass=lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
         max_mass = int(max_mass*1000)/1000
-        masses = np.linspace(m_min, max_mass, N)
+        min_mass = int(min_mass*1000+1)/1000
+        masses = np.linspace(max(m_min,min_mass), max_mass, N)
         masses = masses[masses <= max_mass]
         Lambdas = []
         gravMass = []
@@ -431,7 +432,7 @@ class Model_selection:
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
         
-        return([s, m_min, max_mass])
+        return([s, m_min, max_mass,max(m_min,min_mass)])
 
     def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000, save=None, 
                              trials=0, verbose=False):
@@ -587,7 +588,7 @@ class Model_selection:
 
         # generate interpolator for eos
         [s, _,
-         max_mass_eos] = self.getEoSInterp_parametrized(params, N=100, m_min=self.m_min)
+         max_mass_eos,min_mass] = self.getEoSInterp_parametrized(params, N=100, m_min=self.m_min)
 
         # compute support
         [lambdat_eos,
@@ -596,7 +597,7 @@ class Model_selection:
                                         gridN=gridN,
                                         var_LambdaT=self.var_LambdaT,
                                         var_q=self.var_q,
-                                        minMass=self.min_mass)
+                                        minMass=min_mass)
 
         return(support2D)
 

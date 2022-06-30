@@ -124,6 +124,15 @@ class mcmc_sampler():
             params={k:np.array([g[i]]) for i,k in enumerate(self.keys)}
     
             if(is_valid_eos(params,self.priorbounds,spectral=self.spectral)):
+                try:
+                    post=self.log_post(g)
+                except ValueError as e:
+                    print(e)
+                    print(g,n)
+                    continue
+                if(post==np.nan_to_num(-np.inf)):
+                    continue
+
                 p0.append(g)
                 n+=1
             if(n>=self.nwalkers):
