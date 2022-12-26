@@ -237,7 +237,7 @@ class mcmc_sampler():
                         
         if(p_vs_rho['plot']):
             logp=[]
-            rho=np.logspace(17.25,18.25,1000)
+            rho=np.logspace(17.1,18.25,1000)
             
 
             for s in samples:

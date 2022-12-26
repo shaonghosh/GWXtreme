@@ -234,7 +234,6 @@ class Model_selection:
             self.data={'m1_source':m1,'m2_source':m2,'q':q,'mc_source':mc,'lambdat':LambdaT}
         else:
             self.data = np.recfromtxt(posteriorFile, names=True)
-        print(len(self.data['m1_source']))
         if priorFile:
             self.prior = np.recfromtxt(priorFile, names=True)
             self.minMass = np.min(self.prior['m2_source'])
@@ -247,7 +246,6 @@ class Model_selection:
             self.maxMass = np.max(self.data['m1_source'][0::int(len(self.data['q'])/Ns)])  # max posterior mass
             self.q_max = np.max(self.data['q'][0::int(len(self.data['q'])/Ns)])
             self.q_min = np.min(self.data['q'][0::int(len(self.data['q'])/Ns)])
-        self.min_mass=0.8
         self.m_min=0.8
         # store useful parameters
         self.mc_mean = np.mean(self.data['mc_source'])
@@ -412,7 +410,8 @@ class Model_selection:
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
-        min_mass=lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+        #min_mass=lalsim.SimNeutronStarFamMinimumMass(fam)/lal.MSUN_SI
+        min_mass=m_min
         max_mass = int(max_mass*1000)/1000
         min_mass = int(min_mass*1000+1)/1000
         masses = np.linspace(max(m_min,min_mass), max_mass, N)
