@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 
 class mcmc_sampler():
     def __init__(self, posterior_files, prior_bounds, outfile, gridN=100, nwalkers=100,
-		 Nsamples=10000, ndim=4, spectral=True,npool=1):
+		 Nsamples=10000, ndim=4, spectral=True,npool=1,Ns=4000):
         '''
         Initiates Parametric EoS mcmc Sampler Class
         that also stacks over multiple events,from the
@@ -66,6 +66,9 @@ class mcmc_sampler():
         gridN     ::    Number of grid points to evaluate evidence integral
                         over, while evaluationg log_prob
                         
+        Ns        ::    Number of samples to which the single event q and 
+                        lambda_tilde posteriors are downsampled
+                        
         '''
         
         self.posteriorfiles=posterior_files
@@ -75,7 +78,7 @@ class mcmc_sampler():
         self.nsamples=Nsamples
         self.ndim=ndim
         self.spectral=spectral
-        self.eosmodel=Stacking(posterior_files,spectral=spectral)
+        self.eosmodel=Stacking(posterior_files,spectral=spectral,Ns=Ns)
         self.npool=npool
         self.gridN=gridN
         
