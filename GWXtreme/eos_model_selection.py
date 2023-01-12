@@ -222,17 +222,28 @@ class Model_selection:
                          from PE will make it very slow)
                          
         '''
-        if(posteriorFile[-2:]=='h5'):
-            f=h5py.File(posteriorFile,'r')
-            data=np.array(f['TaylorF2-LS']['posterior_samples'])
-            f.close()
-            m1,m2,q,mc,LambdaT=np.array(data['mass_1_source']),np.array(data['mass_2_source']),np.array(data['mass_ratio']),np.array(data['chirp_mass_source']),np.array(data['lambda_tilde'])
-            self.data={'m1_source':m1,'m2_source':m2,'q':q,'mc_source':mc,'lambdat':LambdaT}
-        else:
-            self.data = np.recfromtxt(posteriorFile, names=True)
-        
         if Ns is None:
             Ns = len(self.prior['m1_source'])
+        
+        if(posteriorFile[-2:]=='h5'):
+            f=h5py.File(posteriorFile,'r')
+            _data=np.array(f['TaylorF2-LS']['posterior_samples'])
+            f.close()
+            (m1,m2,q,mc,LambdaT)=(np.array(_data['mass_1_source']),
+                                        np.array(_data['mass_2_source']),
+                                        np.array(_data['mass_ratio']),
+                                        np.array(_data['chirp_mass_source']),
+                                        np.array(_data['lambda_tilde']))
+        else:
+            _data = np.recfromtxt(posteriorFile, names=True)
+            (m1,m2,q,mc,LambdaT)=(np.array(_data['m1_source']),
+                                        np.array(_data['m2_source']),
+                                        np.array(_data['q']),
+                                        np.array(_data['mc_source']),
+                                        np.array(_data['lambdat']))
+        data={'m1_source':m1,'m2_source':m2,'q':q,'mc_source':mc,'lambdat':LambdaT}
+        Ns_orig = len(q)
+        self.data = {k:data[k][0::int(Ns_orig/Ns)] for k in list(data.keys())}
         
         if priorFile:
             self.prior = np.recfromtxt(priorFile, names=True)
@@ -242,24 +253,24 @@ class Model_selection:
             self.q_min = np.min(self.prior['q'])
         else:
             self.prior = None
-            self.minMass = np.min(self.data['m2_source'][0::int(len(self.data['q'])/Ns)])  # min posterior mass
-            self.maxMass = np.max(self.data['m1_source'][0::int(len(self.data['q'])/Ns)])  # max posterior mass
-            self.q_max = np.max(self.data['q'][0::int(len(self.data['q'])/Ns)])
-            self.q_min = np.min(self.data['q'][0::int(len(self.data['q'])/Ns)])
+            self.minMass = np.min(self.data['m2_source'])  # min posterior mass
+            self.maxMass = np.max(self.data['m1_source'])  # max posterior mass
+            self.q_max = np.max(self.data['q'])
+            self.q_min = np.min(self.data['q'])
         self.m_min=0.8
         # store useful parameters
         self.mc_mean = np.mean(self.data['mc_source'])
 
         # whiten data
-        self.var_LambdaT = np.std(self.data['lambdat'][0::int(len(self.data['q'])/Ns)])
-        self.var_q = np.std(self.data['q'][0::int(len(self.data['q'])/Ns)])
+        self.var_LambdaT = np.std(self.data['lambdat'])
+        self.var_q = np.std(self.data['q'])
 
         self.q_max /= self.var_q
         self.q_min /= self.var_q
         self.yhigh = 1.0/self.var_q  # For reflection boundary condition
 
-        self.margPostData = np.vstack((self.data['lambdat'][0::int(len(self.data['q'])/Ns)]/self.var_LambdaT,
-                                       self.data['q'][0::int(len(self.data['q'])/Ns)]/self.var_q)).T
+        self.margPostData = np.vstack((self.data['lambdat']/self.var_LambdaT,
+                                       self.data['q']/self.var_q)).T
         self.bw = len(self.margPostData)**(-1/6.)  # Scott's bandwidth factor
 
         # Compute the KDE for the marginalized posterior distribution #

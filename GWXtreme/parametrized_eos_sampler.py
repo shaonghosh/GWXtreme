@@ -255,9 +255,7 @@ class mcmc_sampler():
             logp_CIlow=np.array([np.quantile(logp[:,i],0.05) for i in range(len(rho))])
             logp_med=np.array([np.quantile(logp[:,i],0.5) for i in range(len(rho))])
             fig_eos,ax_eos=plt.subplots(1,figsize=(12,12))
-            ax_eos.errorbar(np.log10(rho),logp_med,color='cyan',
-	 		yerr=[logp_med-logp_CIlow,logp_CIup-logp_med],elinewidth=2.0,
-			capsize=1.5,ecolor='cyan',fmt='')
+            ax_eos.fill_between(np.log10(rho),logp_CIlow,logp_CIup,color='cyan',alpha=.5,label='GWXtreme',zorder=1.)
             ax_eos.set_xlabel(r'$\log10{\frac{\rho}{g cm^-3}}$',fontsize=20)
             ax_eos.set_ylabel(r'$log10(\frac{p}{dyne cm^{-2}})$',fontsize=20)
             if(p_vs_rho['true_eos'] is not None):
