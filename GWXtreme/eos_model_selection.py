@@ -199,7 +199,7 @@ def get_trials(fd):
 
 
 class Model_selection:
-    def __init__(self, posteriorFile, priorFile=None, spectral=False):
+    def __init__(self, posteriorFile, priorFile=None, spectral=False,Ns=None):
         '''
         Initiates the Bayes factor calculator with the posterior
         samples from the uniform LambdaT, dLambdaT parameter
@@ -217,10 +217,33 @@ class Model_selection:
 
         spectral      :: Distinguishes between piecewise polytrope and spectral 
                          decomposition method.
+                         
+        Ns            :: Number of Samples to be used for KDE. (Using all samples 
+                         from PE will make it very slow)
+                         
         '''
-
-        self.data = np.recfromtxt(posteriorFile, names=True)
-
+        if(posteriorFile[-2:]=='h5'):
+            f=h5py.File(posteriorFile,'r')
+            _data=np.array(f['TaylorF2-LS']['posterior_samples'])
+            f.close()
+            (m1,m2,q,mc,LambdaT)=(np.array(_data['mass_1_source']),
+                                        np.array(_data['mass_2_source']),
+                                        np.array(_data['mass_ratio']),
+                                        np.array(_data['chirp_mass_source']),
+                                        np.array(_data['lambda_tilde']))
+        else:
+            _data = np.recfromtxt(posteriorFile, names=True)
+            (m1,m2,q,mc,LambdaT)=(np.array(_data['m1_source']),
+                                        np.array(_data['m2_source']),
+                                        np.array(_data['q']),
+                                        np.array(_data['mc_source']),
+                                        np.array(_data['lambdat']))
+        data={'m1_source':m1,'m2_source':m2,'q':q,'mc_source':mc,'lambdat':LambdaT}
+        Ns_orig = len(q)
+        if(Ns is None or Ns>Ns_orig):
+            Ns = Ns_orig #By default we use all the posterior samples without thinning
+        self.data = {k:data[k][0::int(Ns_orig/Ns)] for k in list(data.keys())}
+        
         if priorFile:
             self.prior = np.recfromtxt(priorFile, names=True)
             self.minMass = np.min(self.prior['m2_source'])
@@ -233,7 +256,7 @@ class Model_selection:
             self.maxMass = np.max(self.data['m1_source'])  # max posterior mass
             self.q_max = np.max(self.data['q'])
             self.q_min = np.min(self.data['q'])
-
+        self.m_min=0.8
         # store useful parameters
         self.mc_mean = np.mean(self.data['mc_source'])
 
@@ -253,7 +276,7 @@ class Model_selection:
         self.kde = Bounded_2d_kde(self.margPostData,
                                   xlow=0.0,
                                   xhigh=None,
-                                  ylow=0.0,
+                                  ylow=None,
                                   yhigh=self.yhigh)
 
         # Attribute that distinguishes parametrization method
@@ -372,7 +395,7 @@ class Model_selection:
         max_mass = np.max(masses)
         return [s, masses, Lambdas, max_mass]
 
-    def getEoSInterp_parametrized(self, params, N=100,m_min=1.0):
+    def getEoSInterp_parametrized(self, params, N=100,m_min=0.8):
         '''
         This method accepts a four parameter description of the neutron star 
         equation of state, and returns a list [s, m_min, max_mass] where s is 
@@ -393,12 +416,14 @@ class Model_selection:
 
         fam = lalsim.CreateSimNeutronStarFamily(eos)
         max_mass = lalsim.SimNeutronStarMaximumMass(fam)/lal.MSUN_SI
-
+        
         # This is necessary so that interpolant is computed over the full range
         # Keeping number upto 3 decimal places
         # Not rounding up, since that will lead to RuntimeError
+        min_mass=m_min
         max_mass = int(max_mass*1000)/1000
-        masses = np.linspace(m_min, max_mass, N)
+        min_mass = int(min_mass*1000+1)/1000
+        masses = np.linspace(max(m_min,min_mass), max_mass, N)
         masses = masses[masses <= max_mass]
         Lambdas = []
         gravMass = []
@@ -415,7 +440,7 @@ class Model_selection:
         gravMass = np.array(gravMass)
         s = interp1d(gravMass, Lambdas)
         
-        return([s, m_min, max_mass])
+        return([s, gravMass, max_mass,max(m_min,min_mass)])
 
     def computeEvidenceRatio(self, EoS1, EoS2, gridN=1000, save=None, 
                              trials=0, verbose=False):
@@ -441,10 +466,11 @@ class Model_selection:
         '''
 
         # generate interpolators for both EOS
+        min_mass1,min_mass2 = 0.,0.
 
         if type(EoS1) == list:
             [s1, _,
-             max_mass_eos1] = self.getEoSInterp_parametrized(EoS1, N=1000)
+             max_mass_eos1,min_mass1] = self.getEoSInterp_parametrized(EoS1, N=1000)
 
         elif os.path.exists(EoS1):
             if verbose:
@@ -464,7 +490,7 @@ class Model_selection:
 
         if type(EoS2) == list:
             [s2, _,
-             max_mass_eos2] = self.getEoSInterp_parametrized(EoS2, N=1000)
+             max_mass_eos2,min_mass2] = self.getEoSInterp_parametrized(EoS2, N=1000)
 
         elif os.path.exists(EoS2):
             if verbose:
@@ -489,7 +515,7 @@ class Model_selection:
                                           gridN=gridN,
                                           var_LambdaT=self.var_LambdaT,
                                           var_q=self.var_q,
-                                          minMass=self.minMass)
+                                          minMass=max(self.minMass,min_mass1))
 
         [lambdat_eos2,
          q_eos2, support2D2] = integrator(self.q_min, self.q_max, self.mc_mean,
@@ -497,7 +523,7 @@ class Model_selection:
                                           gridN=gridN,
                                           var_LambdaT=self.var_LambdaT,
                                           var_q=self.var_q,
-                                          minMass=self.minMass)
+                                          minMass=max(self.minMass,min_mass2))
 
         # iterate to determine uncertainty via re-drawing from
         # smoothed distribution
@@ -571,7 +597,7 @@ class Model_selection:
 
         # generate interpolator for eos
         [s, _,
-         max_mass_eos] = self.getEoSInterp_parametrized(params, N=100)
+         max_mass_eos,min_mass] = self.getEoSInterp_parametrized(params, N=100, m_min=self.m_min)
 
         # compute support
         [lambdat_eos,
@@ -580,7 +606,7 @@ class Model_selection:
                                         gridN=gridN,
                                         var_LambdaT=self.var_LambdaT,
                                         var_q=self.var_q,
-                                        minMass=self.minMass)
+                                        minMass=min_mass)
 
         return(support2D)
 
@@ -663,7 +689,7 @@ class Model_selection:
         for eos in eos_list:
             if type(eos) == list:
                 [s, _,
-                 max_mass_eos] = self.getEoSInterp_parametrized(eos, N=1000)
+                 max_mass_eos,min_mass] = self.getEoSInterp_parametrized(eos, N=1000)
 
                 # Reducing the text in the figure legend
                 eos = [np.round(eos[0], 4), np.round(eos[1], 4), np.round(eos[2], 4),np.round(eos[3], 4)]
@@ -711,12 +737,14 @@ class Model_selection:
 
 
 class Stacking():
-    def __init__(self, event_list, event_priors=None, labels=None,spectral=False):
+    def __init__(self, event_list, event_priors=None, labels=None,spectral=False,Ns=None):
         '''
         This class takes as input a list of posterior-samples files for
         various events. Optionally, prior samples files can also be
         supplied and allows us to compute the various quantities related
-        to each of the posterior samples.
+        to each of the posterior samples. Ns is the Number of samples to which the single event q and 
+        lambda_tilde posteriors are downsampled and is only required for speeding up the parametric eos
+        analysis
         '''
         if type(event_list) != list:  # event_list must be a list
             print('All arguments for Stacking must be a list of file-names')
@@ -766,7 +794,7 @@ class Stacking():
         modsel=[]
         for prior_file, event_file in zip(self.event_priors, self.event_list):
             modsel.append(Model_selection(posteriorFile=event_file,
-                                     priorFile=prior_file,spectral=self.spectral))
+                                     priorFile=prior_file,spectral=self.spectral,Ns=Ns))
         self.modsel=modsel
         self.Nevents=len(modsel)
     def stack_events(self, EoS1, EoS2, trials=0, gridN=1000, save=None, 
