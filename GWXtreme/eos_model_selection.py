@@ -25,6 +25,7 @@ import multiprocessing
 import ray
 import numpy as np
 from scipy.interpolate import interp1d
+import h5py
 
 import lal
 import lalsimulation as lalsim

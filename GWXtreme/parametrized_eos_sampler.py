@@ -179,7 +179,61 @@ class mcmc_sampler():
         f.create_dataset('logp',data=np.array(self.logp))
         f.close()
         
+    def parse_samples(self,burn_in_frac = 0.5, thinning = None):
+        '''
+        This methods loads a .h5 file with the MCMC samples 
+        of EoS hyper-parameters and parses them for use by the 
+        plotting functions.
+        see https://emcee.readthedocs.io/en/stable/tutorials/autocorr/
+        for some documentation on choosing thinning and burn-in
+        
+        burn_in_frac  :: fraction of samples to discard from each chain
+                         for MCMC burn in. Default corresponds to discarding 
+                         half the samples in each chain.
+        
+        thinning      :: Number of samples to skip in each chain post
+                         burn in. "None" implements the default value 
+                         which is either (length of chain)/50 or half of
+                         the maximum integrated autocorrelation time. The 
+                         former is used in case autocorrelation analysis 
+                         yields throws non-convergence error. For no thinning 
+                         set thinning=1
+        
+        '''
+        
+        Ns=self.samples.shape
+        burn_in=int(Ns[0]*burn_in_frac)
+        samples=[]
+        
+        if thinning is None:
+            thinning=int(Ns[0]/50.)
 
+            try:
+                thinning=int(max(mc.autocorr.integrated_time(self.samples))/2.)
+            except mc.autocorr.AutocorrError as e:
+                print(e)
+        
+        for i in range(burn_in,Ns[0],thinning):
+            for j in range(Ns[1]):
+                samples.append(self.samples[i,j,:])
+
+        return np.array(samples)
+    
+    def load_samples(self,filename):
+        '''
+        If the pltotting function is called in post-
+        processing i.e. as part of a different script 
+        than the one that ran the sampling, then this 
+        function can be called to load the EoS hyper-parameter
+        samples.
+        
+        filename :: h5py file containing MCMC samples of 
+                    EoS hyper-parameters
+        '''
+        
+        with h5py.File(filename,'r') as f:
+            self.samples = np.array(f['chains'])
+            self.logp = np.array(f['logp'])
         
     def plot(self,cornerplot={'plot':False,'true vals':None},p_vs_rho={'plot':False,'true_eos':None}):
         '''
@@ -201,20 +255,8 @@ class mcmc_sampler():
                       (default is False)
         '''
         fig={'corner':None,'p_vs_rho':None}
-        Ns=self.samples.shape
-        burn_in=int(Ns[0]/2.)
-        samples=[]
-        thinning=int(Ns[0]/50.)
         
-        try:
-            thinning=int(max(mc.autocorr.integrated_time(self.samples))/2.)
-        except mc.autocorr.AutocorrError as e:
-            print(e)
-        for i in range(burn_in,Ns[0],thinning):
-            for j in range(Ns[1]):
-                samples.append(self.samples[i,j,:])
-
-        samples=np.array(samples)
+        samples=self.parse_samples()
         
         if cornerplot['plot']:
                                                                      
