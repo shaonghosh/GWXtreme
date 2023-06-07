@@ -21,6 +21,8 @@ the following:
 
 1. Model selection of the neutron star equation of state using gravitational wave
    parameter estimation results.
+2. Parameter estimation of parametrized neutron star equation of state using 
+   gravitational wave parameter estimate results.
 
 Neutron star equation of state model selection:
 -----------------------------------------------
@@ -89,9 +91,8 @@ Installation:
      python setup.py install
 
 
-The methods:
-............
-.. _method:
+Tool 1:
+_______
 
 To compute the bayes-factor from posterior samples of a given event, the user
 needs to first instantiate a model-selection object.
@@ -108,16 +109,21 @@ If the user has access to the prior distribution of the parameters in a
 `priorFile` kwarg.
 
 
-There are currently three types of methods available for computation of the
+There are currently four types of methods available for computation of the
 bayes-factor using this tool. One can use one of the various tabulated equations
-of state in LALsuite_ to compute the bayes-factor between them. Alternatively,
-one can supply the mass-tidal deformability information corresponding to a given
-equation of state to the code to compute the bayes-factor. Finally, it is also
+of state in LALsuite_ to compute the bayes-factor between them. Another can 
+supply the mass-tidal deformability information corresponding to a given 
+equation of state to the code to compute the bayes-factor. It is also
 possible to pass the mass-radius-:math:`\kappa_2` information for a given
-equation of state, where :math:`\kappa_2` is the tidal Love number. It is not
-possible currently to directly pass the pressure-density information for an
-equation of state.
+equation of state, where :math:`\kappa_2` is the tidal Love number. Finally, the
+fourth uses parametric representations of the equation of state, either of the
+spectral decomposition or piecewise polytrope methods. It is not possible 
+currently to directly pass the pressure-density information for an equation of 
+state.
 
+The methods:
+............
+.. _method:
 
 * **Tabulated equation of states from LALsuite:** A number of equations of
   states are recognized by the LALSimulation library of LALsuite_. The user can
@@ -184,18 +190,31 @@ equation of state.
   of state is through parametrized models. The spectral decomposition and
   piecewise polytropic methods are supported by GWXtreme. In `Read et al`_ the 
   authors presented a technique of modeling the equation of state of neutron 
-  stars using a four parameter polytropic model. The four parameters include the 
-  log of the pressure at a given density (logp1), and three adiabatic indices 
-  (Gamma1, Gamma2, Gamma3) that quantifies the steepness of the variation of 
-  pressure as a function of density at different regimes of the neutron star 
-  densities. GWXtreme allows for the computation of the Bayes-factor for an 
-  equation of state characterized by either one of these two parametrized models.
+  stars using a four parameter polytropic model. The piecewise polytropic method 
+  includes the log of the pressure at a given density (logp1), and three 
+  adiabatic indices (Gamma1, Gamma2, Gamma3) that quantify the steepness of the
+  variation of pressure as a function of density at different regimes of the 
+  neutron star densities. The spectral decomposition method includes four 
+  adiabatic indices (Gamma1, Gamma2, Gamma3, Gamma4) that function the same as 
+  the aformentioned method's three adiabatic indices. GWXtreme allows for the 
+  computation of the Bayes-factor for an equation of state characterized by 
+  either one of these two parametrized models.
 
   .. code-block:: python
 
-     ap4_sly_bf = modsel.computeEvidenceRatio(EoS1=[33.269,2.830,3.445,3.348],
-                                              EoS2=[33.384,3.005,2.988,2.851])
+     # Spectral Decomposition Method
+     ap4_h4_bf = modsel.computeEvidenceRatio(
+                 EoS1=[0.699022012319396, 0.21063320788805218, 
+                       -0.026332616529168074, 0.00044949086936907703],
+                 EoS2=[1.1259555613491166, 0.15084518746474385, 
+                       -0.04741008685909964, 0.0026402844738525923)
 
+     # Piecewise Polytrope Method
+     ap4_h4_bf = modsel.computeEvidenceRatio(
+                 EoS1=[33.285954584684475, 3.0633821935068726,
+                       3.285839760407425, 3.031384683724908],
+                 EoS2=[33.69298398331607, 2.980379356858977,
+                       2.3857696435832807, 1.9554255345456895])
 
 Advanced features:
 ..................
@@ -446,10 +465,14 @@ The evidence for an parametrized equation of state can be computed as well.
 
    from GWXtreme import eos_model_selection as ems
    modsel = ems.Model_selection(posteriorFile='samples.dat', spectral=False)
-   modsel.eos_evidence([33.269,2.83,3.445,3.348])
 
+   # Spectral Polytrope Method
+   modsel.eos_evidence([0.699022012319396, 0.21063320788805218, 
+                       -0.026332616529168074, 0.00044949086936907703])
 
-
+   # Piecewise Polytrope Method
+   modsel.eos_evidence([33.285954584684475, 3.0633821935068726,
+                        3.285839760407425, 3.031384683724908])
 
 General Comments:
 .................
@@ -471,6 +494,62 @@ LALsuite_ installed in your environment can be obtained as follows:
    modsel.getEoSInterp()
 
 which will print the names of the recognized models in the standard I/O.
+
+Tool 2:
+_______
+
+Similar to Tool 1's procedure, the user must first instantiate a sampler object.
+
+.. code-block:: python
+   :linenos:
+
+   from GWXtreme.parametrized_eos_sampler import mcmc_sampler
+
+   # Spectral Decomposition Method
+   sampler=mcmc_sampler(fnames, {'gamma1':{'params':{"min":0.2,"max":2.00}},
+                                 'gamma2':{'params':{"min":-1.6,"max":1.7}},
+                                 'gamma3':{'params':{"min":-0.6,"max":0.6}},
+                                 'gamma4':{'params':{"min":-0.02,"max":0.02}}}, 
+                                 outname, nwalkers=100, Nsamples=10000, ndim=4, 
+                                 spectral=True, npool=100)
+
+   # Piecewise Polytrope Method
+   sampler=mcmc_sampler(fnames, {'logP':{'params':{"min":33.6,"max":34.5}},
+                                 'gamma1':{'params':{"min":2.0,"max":4.5}},
+                                 'gamma2':{'params':{"min":1.1,"max":4.5}},
+                                 'gamma3':{'params':{"min":1.1,"max":4.5}}}, 
+                                 outname, nwalkers=100, Nsamples=10000, ndim=4, 
+                                 spectral=False, npool=100)
+
+The user must provide atleast one path to a .dat file containing the posterior
+samples for an event. These paths can be stored in the `fnames` list. The path 
+in which the EoS parameter posterior samples will be saved must also be set for
+the `outname` string.
+
+Initializing the sampler's walkers, running the sampler, and saving the 
+resulting EoS parameter posterior samples is done with the following lines:
+
+.. code-block:: python
+
+   sampler.initialize_walkers()
+   sampler.run_sampler()
+   sampler.save_data()
+
+Producing a corner plot of the 4 parametric parameters of the posterior samples
+of a sampler run and/or a 90% confidence interval plot of these samples' 
+resulting pressure density values must be done with that same sampler's object.
+
+.. code-block:: python
+   
+   fig=sampler.plot(cornerplot={'plot':True,'true vals':None},
+                    p_vs_rho={'plot':True,'true_eos':None})
+   fig['corner'].savefig('corner4_O3.png')
+   fig['p_vs_rho'][0].savefig('eos4_O3.png')
+
+If the user ran the sampler using injected-EoS-source posterior files, that EoS 
+parametric parameters can be included as vertical lines on the corner plot, or its
+pressure density curve can be overlayed the pressure density confidence 
+interval.
 
 .. _GW170817: https://arxiv.org/abs/1710.05832
 .. _paper: https://arxiv.org/abs/2104.08681
