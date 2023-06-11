@@ -179,11 +179,11 @@ class mcmc_sampler():
         f.create_dataset('logp',data=np.array(self.logp))
         f.close()
         
-    def parse_samples(self,burn_in_frac = 0.5, thinning = None):
+    def parse_samples(self, burn_in_frac=0.5, thinning=None):
         '''
-        This methods loads a .h5 file with the MCMC samples 
-        of EoS hyper-parameters and parses them for use by the 
-        plotting functions.
+        This methods parses the MCMC samples of
+        EoS hyper-parameters and for use by the plotting 
+        functions.
         see https://emcee.readthedocs.io/en/stable/tutorials/autocorr/
         for some documentation on choosing thinning and burn-in
         
@@ -196,7 +196,7 @@ class mcmc_sampler():
                          which is either (length of chain)/50 or half of
                          the maximum integrated autocorrelation time. The 
                          former is used in case autocorrelation analysis 
-                         yields throws non-convergence error. For no thinning 
+                         throws non-convergence error. For no thinning 
                          set thinning=1
         
         '''
@@ -213,22 +213,39 @@ class mcmc_sampler():
             except mc.autocorr.AutocorrError as e:
                 print(e)
         
-        for i in range(burn_in,Ns[0],thinning):
+        for i in range(burn_in, Ns[0], thinning):
             for j in range(Ns[1]):
                 samples.append(self.samples[i,j,:])
 
         return np.array(samples)
     
-    def load_samples(self,filename):
+    def load_samples(self, filename):
         '''
-        If the pltotting function is called in post-
+        If the plotting function is called in post-
         processing i.e. as part of a different script 
         than the one that ran the sampling, then this 
-        function can be called to load the EoS hyper-parameter
-        samples.
+        function needs be called to load the EoS hyper-parameter
+        samples. In addition, if one wishes to make their own
+        plots using the parsed samples, they can do so by first
+        calling this method and then extracting the parsed samples
+        using parse_samples() method of this class.
         
         filename :: h5py file containing MCMC samples of 
                     EoS hyper-parameters
+                    
+        Example:
+        
+        >>> sampler_spectral=mcmc_sampler([],  
+        {'gamma1':{'params':{"min":0.2,"max":2.00}},
+        'gamma2':{'params':{"min":-1.6,"max":1.7}},
+        'gamma3':{'params':{"min":-0.6,"max":0.6}},
+        'gamma4':{'params':{"min":-0.02,"max":0.02}}},
+        out, nwalkers=100, Nsamples=10000, ndim=4,
+        spectral=True,npool=16)
+        >>> sampler.load_samples('file/containing/EoS/hyperparameter/samples')
+        >>> figures = sampler.plot(p_vs_rho={'plot':True,'true_eos': None}) #for plotting using this classes plot() function
+        >>> samples = sampler.parse_samples() # to extract parsed samples for manual plotting if desired
+        
         '''
         
         with h5py.File(filename,'r') as f:
