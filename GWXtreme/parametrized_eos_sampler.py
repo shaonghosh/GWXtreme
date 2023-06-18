@@ -242,9 +242,9 @@ class mcmc_sampler():
         'gamma4':{'params':{"min":-0.02,"max":0.02}}},
         out, nwalkers=100, Nsamples=10000, ndim=4,
         spectral=True,npool=16)
-        >>> sampler.load_samples('file/containing/EoS/hyperparameter/samples')
-        >>> figures = sampler.plot(p_vs_rho={'plot':True,'true_eos': None}) #for plotting using this classes plot() function
-        >>> samples = sampler.parse_samples() # to extract parsed samples for manual plotting if desired
+        >>> sampler_spectral.load_samples('file/containing/EoS/hyperparameter/samples')
+        >>> figures = sampler_spectral.plot(p_vs_rho={'plot':True,'true_eos': None}) #for plotting using this classes plot() function. This step can be skipped if one wishes to manually the extracted samples.
+        >>> samples = sampler_spectral.parse_samples() # to extract parsed samples for manual plotting if desired
         
         '''
         
