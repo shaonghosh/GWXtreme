@@ -13,14 +13,14 @@ outname='Ap4_O3_injections'
 
 """For SPectral"""
 
-sampler=mcmc_sampler(fnames, {'gamma1':{'params':{"min":0.2,"max":2.00}},'gamma2':{'params':{"min":-1.6,"max":1.7}},'gamma3':{'params':{"min":-0.6,"max":0.6}},'gamma4':{'params':{"min":-0.02,"max":0.02}}}, outname, spectral=True, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=100)
+sampler=mcmc_sampler(fnames, {'gamma1':{'params':{"min":0.2,"max":2.00}},'gamma2':{'params':{"min":-1.6,"max":1.7}},'gamma3':{'params':{"min":-0.6,"max":0.6}},'gamma4':{'params':{"min":-0.02,"max":0.02}}}, outname, nwalkers=100, Nsamples=10000, ndim=4, spectral=True, npool=100)
 
 
 """OR"""
 
 """For Piece wise polytrope"""
 
-sampler=mcmc_sampler(fnames, {'logP':{'params':{"min":33.6,"max":34.5}},'gamma1':{'params':{"min":2.0,"max":4.5}},'gamma2':{'params':{"min":1.1,"max":4.5}},'gamma3':{'params':{"min":1.1,"max":4.5}}}, '/home/anarya.ray/gwxtreme-project/repos/'+out, spectral=False, nwalkers=100, Nsamples=10000, ndim=4, spectral=True,npool=100)
+sampler=mcmc_sampler(fnames, {'logP':{'params':{"min":33.6,"max":34.5}},'gamma1':{'params':{"min":2.0,"max":4.5}},'gamma2':{'params':{"min":1.1,"max":4.5}},'gamma3':{'params':{"min":1.1,"max":4.5}}}, outname, nwalkers=100, Nsamples=10000, ndim=4, spectral=False, npool=100)
 
 #Run, Save , Plot
 
