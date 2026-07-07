@@ -13,8 +13,6 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
-    "torch",
-    "zuko",
     "h5py",
     "emcee",
     "tqdm",
