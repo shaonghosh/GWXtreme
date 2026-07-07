@@ -78,31 +78,30 @@ def get_parameterized_eos(
 
 
 def read_eos_mass_lambda_file(mass_lambda_file: str) -> tuple[np.ndarray, np.ndarray]:
-    """Read neutron star mass, tidal deformability values from the given .txt file, representing the mass-radius relation prescribed by some equation of state.
+    """Read neutron star mass, tidal deformability values from the given .txt file, representing the mass-tidal relation prescribed by some equation of state.
 
     The data should be in the following format (without titles)::
 
-        (mass column)       (lambda column)
+        (mass column)       (Lambda column)
         min_mass            ...
         ...                 ...
         ...                 ...
         max_mass            ...
 
     The values of masses should be in units of solar masses. The
-    tidal deformability λ should be supplied in SI units.
+    tidal deformability values should be dimensionless.
 
     Parameters
     ----------
     mass_lambda_file
-        .txt file containing mass and tidal deformability (λ) values
+        .txt file containing mass and dimensionless tidal deformability values
 
     Returns
     -------
-        masses (as given), dimensionless tidal deformability
+        Two arrays: masses, dimensionless tidal deformabilities
     """
 
     masses, lambdas = np.loadtxt(mass_lambda_file, unpack=True)
-    lambdas = lal.G_SI * lambdas * (1 / (lal.MRSUN_SI * masses) ** 5)
 
     return masses, lambdas
 
@@ -271,7 +270,7 @@ def get_log_pressure(eos, density: np.ndarray) -> np.ndarray:
 
     min_pressure = 5.0e31
     max_pressure = min(6.0e36, lalsimulation.SimNeutronStarEOSMaxPressure(eos))
-    log10_pressure_grid = np.linspace(np.log10(min_pressure), np.log10(max_pressure), 256)
+    log10_pressure_grid = np.linspace(np.log10(min_pressure), np.log10(max_pressure), 500)
 
     pressure_grid = np.power(10.0, log10_pressure_grid)
     density_grid = np.empty_like(pressure_grid)
@@ -340,18 +339,18 @@ class EOSInterpolator:
             required if passing ``eos_parameters``
 
         mass_lambda_file
-            .txt file containing mass and tidal deformability (λ) values
+            .txt file containing mass and tidal deformability values
 
             The data should be in the following format (without titles)::
 
-                (mass column)       (lambda column)
+                (mass column)       (Lambda column)
                 min_mass            ...
                 ...                 ...
                 ...                 ...
                 max_mass            ...
 
             The values of masses should be in units of solar masses. The
-            tidal deformability λ should be supplied in SI units.
+            tidal deformability values should be dimensionless.
 
             Note: Supplying an EOS in this form is not sufficient for inferences
             with 'psr'-type events, due to the inability to compute radii
@@ -418,7 +417,7 @@ class EOSInterpolator:
             self.min_mass = int(self.min_mass * 1000 + 1) / 1000
             self.max_mass = int(self.max_mass * 1000) / 1000
 
-            n_points = 200
+            n_points = 1000
             masses = np.linspace(self.min_mass, self.max_mass, n_points)
             masses = masses[masses <= self.max_mass]
 

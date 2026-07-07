@@ -305,18 +305,18 @@ class ModelSelector:
             Name of an EOS as implemented in LALSuite
 
         target_eos_mass_lambda_file, reference_eos_mass_lambda_file
-            .txt file containing mass and tidal deformability (λ) values
+            .txt file containing mass and dimensionless tidal deformability values
 
             The data should be in the following format (without titles)::
 
-                (mass column)       (lambda column)
+                (mass column)       (Lambda column)
                 min_mass            ...
                 ...                 ...
                 ...                 ...
                 max_mass            ...
 
             The values of masses should be in units of solar masses. The
-            tidal deformability λ should be supplied in SI units.
+            tidal deformability should be dimensionless.
 
             Note: Supplying an EOS in this form is not sufficient for inferences
             with 'psr'-type events, due to the inability to compute radii
@@ -439,18 +439,18 @@ class ModelSelector:
             Name of an EOS as implemented in LALSuite
 
         eos_mass_lambda_file
-            .txt file containing mass and tidal deformability (λ) values
+            .txt file containing mass and dimensionless tidal deformability values
 
             The data should be in the following format (without titles)::
 
-                (mass column)       (lambda column)
+                (mass column)       (Lambda column)
                 min_mass            ...
                 ...                 ...
                 ...                 ...
                 max_mass            ...
 
             The values of masses should be in units of solar masses. The
-            tidal deformability λ should be supplied in SI units.
+            tidal deformability should be dimensionless.
 
             Note: Supplying an EOS in this form is not sufficient for inferences
             with 'psr'-type events, due to the inability to compute radii
@@ -553,7 +553,7 @@ class ModelSelector:
 
         # Need to average the array of evidences corresponding to the
         # ensemble of models, if applicable.
-        if isinstance(self.density_estimator, EnsembleNormalizingFlow):
+        if self.density_est_method == "ensemble-flow":
             return np.mean(evidence).item()
 
         return evidence.item()
@@ -676,7 +676,7 @@ class ModelSelector:
         """
 
         original_evidence = self._integrate_eos_path(points)
-        if n_resamplings > 0 and not isinstance(self.density_estimator, EnsembleNormalizingFlow):
+        if n_resamplings > 0 and self.density_est_method != "ensemble-flow":
             logger.info("Re-computing evidence over {} re-samplings of the density estimator".format(n_resamplings))
 
             evidences = np.empty(n_resamplings + 1)
@@ -753,7 +753,7 @@ class ModelSelector:
             Single-element array containing the evidence value
         """
 
-        if not isinstance(self.density_estimator, EnsembleNormalizingFlow):
+        if self.density_est_method != "ensemble-flow":
             if self.event_type == "gw-4d":
                 m1_arr = points[0, :, 0]
                 m2_arr = points[:, 0, 1]
@@ -1005,18 +1005,18 @@ class JointModelSelector:
             Name of an EOS as implemented in LALSuite
 
         target_eos_mass_lambda_file, reference_eos_mass_lambda_file
-            .txt file containing mass and tidal deformability (λ) values
+            .txt file containing mass and dimensionless tidal deformability values
 
             The data should be in the following format (without titles)::
 
-                (mass column)       (lambda column)
+                (mass column)       (Lambda column)
                 min_mass            ...
                 ...                 ...
                 ...                 ...
                 max_mass            ...
 
             The values of masses should be in units of solar masses. The
-            tidal deformability λ should be supplied in SI units.
+            tidal deformability values should be dimensionless.
 
             Note: Supplying an EOS in this form is not sufficient for inferences
             with 'psr'-type events, due to the inability to compute radii
@@ -1147,18 +1147,18 @@ class JointModelSelector:
             Name of an EOS as implemented in LALSuite
 
         eos_mass_lambda_file
-            .txt file containing mass and tidal deformability (λ) values
+            .txt file containing mass and dimensionless tidal deformability values
 
             The data should be in the following format (without titles)::
 
-                (mass column)       (lambda column)
+                (mass column)       (Lambda column)
                 min_mass            ...
                 ...                 ...
                 ...                 ...
                 max_mass            ...
 
             The values of masses should be in units of solar masses. The
-            tidal deformability λ should be supplied in SI units.
+            tidal deformability values should be dimensionless.
 
             Note: Supplying an EOS in this form is not sufficient for inferences
             with 'psr'-type events, due to the inability to compute radii
