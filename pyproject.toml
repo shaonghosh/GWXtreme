@@ -14,7 +14,7 @@ authors = [
 description = "Neutron star equation-of-state inference from gravitational-wave observations of binary neutron star mergers"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "numpy",
     "scipy",
