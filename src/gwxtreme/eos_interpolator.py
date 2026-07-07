@@ -407,7 +407,9 @@ class EOSInterpolator:
                 self.eos = get_parameterized_eos(eos_parameters, parameterization)
 
             else:
-                raise UserWarning("Must pass either eos_name or eos_parameters, parameterization, and eos_parameter_bounds.")
+                raise UserWarning(
+                    "Must pass either eos_name, mass_lambda_file, mass_radius_k_file, or eos_parameters, parameterization, and eos_parameter_bounds."
+                )
 
             self.eos_fam = lalsimulation.CreateSimNeutronStarFamily(self.eos)
 
