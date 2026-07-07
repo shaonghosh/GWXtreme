@@ -45,11 +45,3 @@ gwxtreme.usage\_scripts
    :members:
    :show-inheritance:
    :undoc-members:
-
-gwxtreme.flow\_training
------------------------
-
-.. automodule:: gwxtreme.flow_training
-   :members:
-   :show-inheritance:
-   :undoc-members:
