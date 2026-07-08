@@ -2,9 +2,16 @@
 # Read the Docs configuration file
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
 
-# Required
 version: 2
 
-# Build documentation in the docs/ directory with Sphinx
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.13"
+  # Run a custom post-install job to cleanly fetch the theme package
+  jobs:
+    post_install:
+      - pip install sphinx_rtd_theme
+
 sphinx:
   configuration: docs/source/conf.py
