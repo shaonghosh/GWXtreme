@@ -24,15 +24,18 @@ The below figures illustrate the types of results that can be produced using the
 
 .. image:: GWXtreme_model_selection_example.png
 
+.. image:: GWXtreme_pressure_density_constraints_example.png
+
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Getting Started
 
    installation
+   inference_methods
    examples/index
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: API Reference
 
    gwxtreme

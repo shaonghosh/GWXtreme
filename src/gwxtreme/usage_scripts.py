@@ -33,10 +33,10 @@ def compute_bayes_factors_for_several_named_eos(
     model_selector: ModelSelector | JointModelSelector,
     named_eos_list: list[str],
     reference_eos_name: str,
-    n_grid: int,
     n_resamplings: int,
     n_jobs: int,
     save_file: str | None = None,
+    n_grid: int = 200,
 ) -> dict:
     results = {}
 
