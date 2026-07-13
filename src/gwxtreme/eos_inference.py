@@ -520,7 +520,6 @@ class ModelSelector:
         self,
         parameters: np.ndarray | tuple | list,
         parameterization: Literal["spectral", "polytrope"],
-        parameter_bounds: list[tuple[float, float]],
         n_grid: int = 200,
     ) -> float:
         """Compute the evidence for a parameterized EOS model.
@@ -533,9 +532,6 @@ class ModelSelector:
             Must be one of "spectral" (4-parameter spectral
             decomposition model) or "polytrope" (4-parameter
             piecewise-polytrope model)
-        parameter_bounds
-            Bounds for a uniform prior distribution of the EOS parameters, structured like
-            [(g1_min, g1_max), (g2_min, g2_max), (g3_min, g3_max), (g4_min, g4_max)]
 
         Returns
         -------
@@ -545,7 +541,6 @@ class ModelSelector:
         interpolator = EOSInterpolator(
             eos_parameters=np.array(parameters),
             parameterization=parameterization,
-            parameter_bounds=parameter_bounds,
         )
 
         path = self._get_path_for_eos(interpolator, n_grid=n_grid)
@@ -1186,9 +1181,7 @@ class JointModelSelector:
 
         return joint_evidences, per_event_evidences
 
-    def compute_parameterized_eos_joint_evidence(
-        self, parameters, parameterization: Literal["spectral", "polytrope"], parameter_bounds
-    ) -> tuple[float, np.ndarray]:
+    def compute_parameterized_eos_joint_evidence(self, parameters, parameterization: Literal["spectral", "polytrope"]) -> tuple[float, np.ndarray]:
         """Compute the joint evidence for a parameterized EOS model.
 
         The joint evidence is the product of the evidences from individual events.
@@ -1201,9 +1194,6 @@ class JointModelSelector:
             Must be one of "spectral" (4-parameter spectral
             decomposition model) or "polytrope" (4-parameter
             piecewise-polytrope model)
-        parameter_bounds
-            Bounds for a uniform prior distribution of the EOS parameters, structured like
-            [(g1_min, g1_max), (g2_min, g2_max), (g3_min, g3_max), (g4_min, g4_max)]
 
         Returns
         -------
@@ -1214,9 +1204,7 @@ class JointModelSelector:
 
         for i, model_selector in enumerate(self.model_selectors):
             per_event_evidences.append(
-                model_selector.compute_parameterized_eos_evidence(
-                    parameters, parameterization, parameter_bounds, self.parameterized_evidence_integral_n_grids[i]
-                )
+                model_selector.compute_parameterized_eos_evidence(parameters, parameterization, self.parameterized_evidence_integral_n_grids[i])
             )
 
         joint_evidence = np.prod(per_event_evidences)
@@ -1361,7 +1349,7 @@ class ParameterizedEoSSampler:
         if not is_valid_eos(parameters, self.parameterization, largest_ns_mass=self.largest_observed_ns_mass):
             return -np.inf
 
-        joint_evidence, _ = self.joint_selector.compute_parameterized_eos_joint_evidence(parameters, self.parameterization, self.eos_prior_bounds)
+        joint_evidence, _ = self.joint_selector.compute_parameterized_eos_joint_evidence(parameters, self.parameterization)
         log_evidence = np.log(joint_evidence)
         return log_evidence
 

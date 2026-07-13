@@ -299,7 +299,6 @@ class EOSInterpolator:
         eos_name: str | None = None,
         eos_parameters: np.ndarray | None = None,
         parameterization: Literal["spectral", "polytrope"] | None = None,
-        parameter_bounds: list[tuple] | None = None,
         mass_lambda_file: str | None = None,
         mass_radius_k_file: str | None = None,
     ):
@@ -320,7 +319,7 @@ class EOSInterpolator:
 
             **OR**
 
-            ``eos_parameters``, ``parameterization``, and ``parameter_bounds``
+            ``eos_parameters`` and ``parameterization``
 
         Parameters
         ----------
@@ -332,11 +331,6 @@ class EOSInterpolator:
 
         parameterization
             Must be one of "spectral" or "polytrope"; required if passing ``eos_parameters``
-
-        parameter_bounds
-            Bounds for a uniform prior distribution of EOS parameters, structured like
-            [(g1_min, g1_max), (g2_min, g2_max), (g3_min, g3_max), (g4_min, g4_max)];
-            required if passing ``eos_parameters``
 
         mass_lambda_file
             .txt file containing mass and tidal deformability values
@@ -400,16 +394,13 @@ class EOSInterpolator:
                 )
                 self.eos = get_lal_named_eos(eos_name)
 
-            elif eos_parameters is not None and parameterization is not None and parameter_bounds is not None:
+            elif eos_parameters is not None and parameterization is not None:
                 self.eos_parameters = eos_parameters
                 self.parameterization = parameterization
-                self.parameter_bounds = parameter_bounds
                 self.eos = get_parameterized_eos(eos_parameters, parameterization)
 
             else:
-                raise UserWarning(
-                    "Must pass either eos_name, mass_lambda_file, mass_radius_k_file, or eos_parameters, parameterization, and eos_parameter_bounds."
-                )
+                raise UserWarning("Must pass either eos_name, mass_lambda_file, mass_radius_k_file, or eos_parameters and parameterization.")
 
             self.eos_fam = lalsimulation.CreateSimNeutronStarFamily(self.eos)
 
