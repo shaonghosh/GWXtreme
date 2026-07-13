@@ -26,7 +26,7 @@ import numpy as np
 from gwxtreme.eos_interpolator import get_parameterized_eos
 
 
-def spectral_eos_adiabatic_index(spectral_params: list | tuple | np.ndarray, log10_pressure: np.ndarray) -> np.ndarray:
+def _spectral_eos_adiabatic_index(spectral_params: list | tuple | np.ndarray, log10_pressure: np.ndarray) -> np.ndarray:
     """Compute the adiabatic index at a particular value of log pressure,
     using the spectral EOS, given a particular choice of spectral
     parameters.
@@ -52,7 +52,7 @@ def spectral_eos_adiabatic_index(spectral_params: list | tuple | np.ndarray, log
     return np.exp(log_gamma)
 
 
-def is_valid_adiabatic_index(spectral_params: list | tuple | np.ndarray) -> bool:
+def _is_valid_adiabatic_index(spectral_params: list | tuple | np.ndarray) -> bool:
     """Confirm that the adiabatic index is within a tolerable range
     (0.6, 4.5) for the given spectral EOS.
 
@@ -67,11 +67,11 @@ def is_valid_adiabatic_index(spectral_params: list | tuple | np.ndarray) -> bool
     """
 
     log10_pressure_grid = np.linspace(0.0, 12.3081, 500)
-    adiabatic_index = spectral_eos_adiabatic_index(spectral_params, log10_pressure_grid)
+    adiabatic_index = _spectral_eos_adiabatic_index(spectral_params, log10_pressure_grid)
     return bool(np.all(adiabatic_index > 0.6)) and bool(np.all(adiabatic_index < 4.5))
 
 
-def has_enough_points(eos_fam) -> bool:
+def _has_enough_points(eos_fam) -> bool:
     """Confirm that the TOV solver returns increasing
     masses for increasing pressure for at least 8 points
     in the pressure grid. If this is not true, ``lalsimulation``
@@ -106,7 +106,7 @@ def has_enough_points(eos_fam) -> bool:
     return True
 
 
-def eos_max_sound_speed(eos, eos_fam, max_mass_kg: float | None = None) -> float:
+def _eos_max_sound_speed(eos, eos_fam, max_mass_kg: float | None = None) -> float:
     """Compute the maximum sound speed (at the center of the NS)
     predicted by the given EOS.
 
@@ -165,13 +165,13 @@ def is_valid_eos(eos_params: np.ndarray | tuple | list, parameterization: Litera
     """
 
     if parameterization == "spectral":
-        if not is_valid_adiabatic_index(eos_params):
+        if not _is_valid_adiabatic_index(eos_params):
             return False
 
     eos = get_parameterized_eos(eos_params, parameterization)
 
     # to avoid interpolation errors from LAL
-    if not has_enough_points(eos):
+    if not _has_enough_points(eos):
         return False
 
     eos_fam = lalsimulation.CreateSimNeutronStarFamily(eos)
@@ -181,4 +181,4 @@ def is_valid_eos(eos_params: np.ndarray | tuple | list, parameterization: Litera
         return False
 
     # final condition: causality
-    return eos_max_sound_speed(eos, eos_fam, max_mass_kg=eos_m_max) < 1.10
+    return _eos_max_sound_speed(eos, eos_fam, max_mass_kg=eos_m_max) < 1.10

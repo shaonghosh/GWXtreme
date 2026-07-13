@@ -217,14 +217,14 @@ def get_nicer_pulsar_pe_posterior_samples(posterior_file: str) -> np.ndarray:
         raise NotImplementedError()
 
 
-def get_mean_mchirp_for_cbc_event(posterior_file: str, cbc_dim: int) -> float:
+def _get_mean_mchirp_for_cbc_event(posterior_file: str, cbc_dim: int) -> float:
     """Return the mean chirp mass from the given samples file"""
 
     samples = read_prior_or_posterior_file(posterior_file, cbc_dim=cbc_dim)
     return np.mean(samples["mc_source"]).item()
 
 
-def get_q_range(samples_file: str, cbc_dim: int) -> tuple[float, float]:
+def _get_q_range(samples_file: str, cbc_dim: int) -> tuple[float, float]:
     """Return the min and max values of q from the given samples file"""
 
     samples = read_prior_or_posterior_file(samples_file, cbc_dim=cbc_dim)

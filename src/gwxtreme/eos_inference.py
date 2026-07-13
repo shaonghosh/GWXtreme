@@ -51,7 +51,7 @@ import numpy as np
 import ray
 
 from gwxtreme.density_estimation import BoundedKDE
-from gwxtreme.utils import get_q_range, read_prior_or_posterior_file
+from gwxtreme.utils import _get_q_range, read_prior_or_posterior_file
 
 try:
     from gwxtreme.flow_density_estimation import BayesianNormalizingFlow, EnsembleNormalizingFlow
@@ -62,8 +62,8 @@ except ImportError:
 from gwxtreme.eos_interpolator import EOSInterpolator, convert_masses
 from gwxtreme.eos_prior import is_valid_eos
 from gwxtreme.utils import (
+    _get_mean_mchirp_for_cbc_event,
     get_gw_event_pe_posterior_samples,
-    get_mean_mchirp_for_cbc_event,
     get_nicer_pulsar_pe_posterior_samples,
 )
 
@@ -188,16 +188,16 @@ class ModelSelector:
         self.density_est_method = density_est_method
 
         if self.event_type == "gw-2d":
-            self.mean_mchirp = get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=2)
+            self.mean_mchirp = _get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=2)
 
             logger.info("Mean chirp mass from CBC posterior = {}".format(self.mean_mchirp))
 
             if prior_file is not None:
-                self.q_min, self.q_max = get_q_range(prior_file, cbc_dim=2)
+                self.q_min, self.q_max = _get_q_range(prior_file, cbc_dim=2)
             elif q_min is not None and q_max is not None:
                 self.q_min, self.q_max = q_min, q_max
             else:
-                self.q_min, self.q_max = get_q_range(posterior_file, cbc_dim=2)
+                self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=2)
 
             logger.info("q integration range = ({}, {})".format(self.q_min, self.q_max))
 
@@ -205,14 +205,14 @@ class ModelSelector:
             parameter_bounds = [(0.0, np.inf), (0.0, 1.0)]
 
         elif self.event_type == "gw-3d":
-            self.mean_mchirp = get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=3)
+            self.mean_mchirp = _get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=3)
 
             if prior_file is not None:
-                self.q_min, self.q_max = get_q_range(prior_file, cbc_dim=3)
+                self.q_min, self.q_max = _get_q_range(prior_file, cbc_dim=3)
             elif q_min is not None and q_max is not None:
                 self.q_min, self.q_max = q_min, q_max
             else:
-                self.q_min, self.q_max = get_q_range(posterior_file, cbc_dim=3)
+                self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=3)
 
             logger.info("q integration range = ({}, {})".format(self.q_min, self.q_max))
 
@@ -376,7 +376,7 @@ class ModelSelector:
             Array of Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
         """
 
-        target_eos_evidences = self.compute_eos_evidence(
+        target_eos_evidences = self._compute_eos_evidence(
             eos_name=target_eos_name,
             eos_mass_lambda_file=target_eos_mass_lambda_file,
             eos_mass_radius_k_file=target_eos_mass_radius_k_file,
@@ -385,7 +385,7 @@ class ModelSelector:
             n_jobs=n_jobs,
         )
 
-        reference_eos_evidences = self.compute_eos_evidence(
+        reference_eos_evidences = self._compute_eos_evidence(
             eos_name=reference_eos_name,
             eos_mass_lambda_file=reference_eos_mass_lambda_file,
             eos_mass_radius_k_file=reference_eos_mass_radius_k_file,
@@ -412,7 +412,7 @@ class ModelSelector:
 
         return bayes_factors
 
-    def compute_eos_evidence(
+    def _compute_eos_evidence(
         self,
         eos_name: str | None = None,
         eos_mass_lambda_file: str | None = None,
@@ -508,7 +508,7 @@ class ModelSelector:
         )
 
         interpolator = EOSInterpolator(eos_name=eos_name, mass_lambda_file=eos_mass_lambda_file, mass_radius_k_file=eos_mass_radius_k_file)
-        eos_path = self.get_path_for_eos(interpolator, n_grid)
+        eos_path = self._get_path_for_eos(interpolator, n_grid)
 
         logger.info("EOS path has shape {}".format(eos_path.shape))
 
@@ -548,7 +548,7 @@ class ModelSelector:
             parameter_bounds=parameter_bounds,
         )
 
-        path = self.get_path_for_eos(interpolator, n_grid=n_grid)
+        path = self._get_path_for_eos(interpolator, n_grid=n_grid)
         evidence = self._path_evidence(path)
 
         # Need to average the array of evidences corresponding to the
@@ -558,7 +558,7 @@ class ModelSelector:
 
         return evidence.item()
 
-    def get_path_for_eos(
+    def _get_path_for_eos(
         self,
         eos_interpolator: EOSInterpolator,
         n_grid: int = 200,
@@ -648,7 +648,7 @@ class ModelSelector:
         Parameters
         ----------
         points
-            Array of points as returned by ``ModelSelector.get_path_for_eos``
+            Array of points as returned by ``ModelSelector._get_path_for_eos``
 
         n_resamplings
             Number of evidence recomputations to perform by resampling
@@ -743,7 +743,7 @@ class ModelSelector:
         Parameters
         ----------
         points
-            Array of points as returned by ``ModelSelector.get_path_for_eos``
+            Array of points as returned by ``ModelSelector._get_path_for_eos``
         resample
             Whether to resample the density estimator before
             integrating, by default False
@@ -814,47 +814,6 @@ class ModelSelector:
                     ensemble_evidences.append(np.trapezoid(y=density, x=points[:, integrate_dim]))
 
             return np.array(ensemble_evidences)
-
-    def plot_eos_paths(
-        self, eos_interpolators: list[EOSInterpolator], labels: list[str], colors: list[str], n_resamplings: int = 100, grid_size: int = 100
-    ):
-        paths = [self.get_path_for_eos(interp) for interp in eos_interpolators]
-
-        assert len(eos_interpolators) == len(labels) == len(colors), "Must provide a line label and color for each EOS"
-
-        plabels = {
-            "gw-2d": [r"$\tilde{\Lambda}$", "$q$"],
-            "gw-3d": [r"$\Lambda_1$", "$q$", r"$\Lambda_2$"],
-            "gw-4d": [r"$m_1$", r"$m_2$", r"$\Lambda_1$", r"$\Lambda_2$"],
-            "psr": [r"$m (M_{\odot})$", "$R (km)$"],
-        }[self.event_type]
-
-        pbounds = {
-            "gw-2d": [(0.01, 3000), (0.001, 0.999)],
-            "gw-3d": [(0.01, 3000), (0.001, 0.999), (0.01, 3000)],
-            "gw-4d": [(1.0, 3.0), (1.0, 3.0), (0.0, 1500), (0.0, 1500)],
-            "psr": [(0.8, 3.0), (8.0, 30.0)],
-        }[self.event_type]
-
-        fig, axes = corner_plot(
-            self.density_estimator,
-            parameter_labels=plabels,
-            parameter_plot_bounds=pbounds,
-            n_resamplings=n_resamplings,
-            grid_size=grid_size,
-        )
-
-        ndim = len(plabels)
-        for row in range(ndim):
-            for col in range(ndim):
-                if col < row:  # 2D marginal plots
-                    for i, path in enumerate(paths):
-                        x = path[:, col]
-                        y = path[:, row]
-                        axes[row, col].plot(x, y, label=labels[i], color=colors[i])
-                    axes[row, col].legend()
-
-        return fig, axes
 
 
 class JointModelSelector:
@@ -1078,7 +1037,7 @@ class JointModelSelector:
             Array of joint Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
         """
 
-        target_eos_joint_evidences, target_eos_per_event_evidences = self.compute_joint_eos_evidence(
+        target_eos_joint_evidences, target_eos_per_event_evidences = self._compute_joint_eos_evidence(
             eos_name=target_eos_name,
             eos_mass_lambda_file=target_eos_mass_lambda_file,
             eos_mass_radius_k_file=target_eos_mass_radius_k_file,
@@ -1087,7 +1046,7 @@ class JointModelSelector:
             n_jobs=n_jobs,
         )
 
-        reference_eos_joint_evidences, reference_eos_per_event_evidences = self.compute_joint_eos_evidence(
+        reference_eos_joint_evidences, reference_eos_per_event_evidences = self._compute_joint_eos_evidence(
             eos_name=reference_eos_name,
             eos_mass_lambda_file=reference_eos_mass_lambda_file,
             eos_mass_radius_k_file=reference_eos_mass_radius_k_file,
@@ -1120,7 +1079,7 @@ class JointModelSelector:
 
         return joint_bayes_factors
 
-    def compute_joint_eos_evidence(
+    def _compute_joint_eos_evidence(
         self,
         eos_name: str | None = None,
         eos_mass_lambda_file: str | None = None,
@@ -1214,7 +1173,7 @@ class JointModelSelector:
         per_event_evidences = []
 
         for model_selector in self.model_selectors:
-            evidences = model_selector.compute_eos_evidence(
+            evidences = model_selector._compute_eos_evidence(
                 eos_name=eos_name,
                 eos_mass_lambda_file=eos_mass_lambda_file,
                 eos_mass_radius_k_file=eos_mass_radius_k_file,
@@ -1371,7 +1330,7 @@ class ParameterizedEoSSampler:
             q_maxes=q_maxes,
         )
 
-    def log_post(self, parameters: np.ndarray) -> float:
+    def _log_post(self, parameters: np.ndarray) -> float:
         """Compute the log posterior density (MCMC sampling likelihood) for
         the given ``parameters``.
 
@@ -1494,7 +1453,7 @@ class ParameterizedEoSSampler:
         else:
             initial_state = None
 
-        sampler = emcee.EnsembleSampler(nwalkers=nwalkers, ndim=4, log_prob_fn=self.log_post, backend=backend)
+        sampler = emcee.EnsembleSampler(nwalkers=nwalkers, ndim=4, log_prob_fn=self._log_post, backend=backend)
 
         # Track average autocorrelation time to determine convergence
         old_tau = np.inf
