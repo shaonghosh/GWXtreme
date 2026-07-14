@@ -41,26 +41,26 @@ def compute_bayes_factors_for_several_named_eos(
     results = {}
 
     if isinstance(model_selector, ModelSelector):
-        reference_eos_evidences = model_selector.compute_eos_evidence(
+        reference_eos_evidences = model_selector._compute_eos_evidence(
             eos_name=reference_eos_name, n_grid=n_grid, n_resamplings=n_resamplings, n_jobs=n_jobs
         )
 
         for eos in named_eos_list:
-            evidences = model_selector.compute_eos_evidence(eos_name=eos, n_grid=n_grid, n_resamplings=n_resamplings, n_jobs=n_jobs)
+            evidences = model_selector._compute_eos_evidence(eos_name=eos, n_grid=n_grid, n_resamplings=n_resamplings, n_jobs=n_jobs)
 
             bfs = evidences / reference_eos_evidences
 
             results[eos] = bfs.tolist()
 
     else:
-        reference_eos_joint_evidences, ref_per_event_evidences = model_selector.compute_joint_eos_evidence(
+        reference_eos_joint_evidences, ref_per_event_evidences = model_selector._compute_joint_eos_evidence(
             eos_name=reference_eos_name, n_grid=n_grid, n_resamplings=n_resamplings, n_jobs=n_jobs
         )
 
         per_event_results = [{} for _ in range(len(ref_per_event_evidences))]
 
         for eos in named_eos_list:
-            joint_evidences, per_event_evidences = model_selector.compute_joint_eos_evidence(
+            joint_evidences, per_event_evidences = model_selector._compute_joint_eos_evidence(
                 eos_name=eos, n_grid=n_grid, n_resamplings=n_resamplings, n_jobs=n_jobs
             )
 
