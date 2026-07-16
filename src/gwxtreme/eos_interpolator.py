@@ -448,6 +448,10 @@ class EOSInterpolator:
         """Compute neutron star tidal deformability from mass using the EOS
         mass-tidal deformability interpolator.
 
+        For given mass values > the maximum mass of this EOS, the object
+        will be considered a black hole, and the returned Lambda values
+        corresponding to those masses will be 0.
+
         Parameters
         ----------
         mass
