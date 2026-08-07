@@ -41,10 +41,10 @@ def read_prior_or_posterior_file(file: str, cbc_dim: int) -> dict:
 
         If ``cbc_dim`` is 3 or 4, the file must include:
 
-            m1_source, m2_source, q, mc_source, lambda_1, lambda_2
+            q, mc_source, lambda_1, lambda_2
 
             Possible alternative names:
-            mass_1_source, mass_2_source, mass_ratio, chirp_mass_source, lambda1, lambda2
+            mass_ratio, chirp_mass_source, lambda1, lambda2
 
     cbc_dim
         Must be 2, 3, or 4. This corresponds to the event type used in the
@@ -71,40 +71,23 @@ def read_prior_or_posterior_file(file: str, cbc_dim: int) -> dict:
     elif ext == ".dat":
         data = np.genfromtxt(file_, names=True)
 
+    try:
+        q = np.array(data["q"])
+    except KeyError:
+        q = np.array(data["mass_ratio"])
+
+    try:
+        mc = np.array(data["mc_source"])
+    except KeyError:
+        mc = np.array(data["chirp_mass_source"])
+
     if cbc_dim == 2:
-        try:
-            q = np.array(data["q"])
-        except KeyError:
-            q = np.array(data["mass_ratio"])
-
-        try:
-            mc = np.array(data["mc_source"])
-        except KeyError:
-            mc = np.array(data["chirp_mass_source"])
-
         try:
             lambdat = np.array(data["lambdat"])
         except KeyError:
             lambdat = np.array(data["lambda_tilde"])
 
     else:
-        try:
-            m1 = np.array(data["m1_source"])
-            m2 = np.array(data["m2_source"])
-        except KeyError:
-            m1 = np.array(data["mass_1_source"])
-            m2 = np.array(data["mass_2_source"])
-
-        try:
-            q = np.array(data["q"])
-        except KeyError:
-            q = np.array(data["mass_ratio"])
-
-        try:
-            mc = np.array(data["mc_source"])
-        except KeyError:
-            mc = np.array(data["chirp_mass_source"])
-
         try:
             lambda1 = np.array(data["lambda_1"])
             lambda2 = np.array(data["lambda_2"])
@@ -113,8 +96,6 @@ def read_prior_or_posterior_file(file: str, cbc_dim: int) -> dict:
             lambda2 = np.array(data["lambda2"])
 
     return {
-        "m1_source": m1,
-        "m2_source": m2,
         "q": q,
         "mc_source": mc,
         "lambdat": lambdat,
@@ -144,10 +125,10 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
 
         If ``cbc_dim`` is 3 or 4, the file must include:
 
-            m1_source, m2_source, q, mc_source, lambda_1, lambda_2
+            q, mc_source, lambda_1, lambda_2
 
             Possible alternative names:
-            mass_1_source, mass_2_source, mass_ratio, chirp_mass_source, lambda1, lambda2
+            mass_ratio, chirp_mass_source, lambda1, lambda2
 
     cbc_dim
         Must be 2, 3, or 4. This corresponds to the event type used in the
@@ -155,7 +136,7 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
 
     Returns
     -------
-        Array of shape (n_samples, cbc_dim). The order of parameters is (lambdat, q) for 2D, (lambda1, q, lambda2) for 3D, and (m1, m2, lambda1, lambda2) for 4D.
+        Array of shape (n_samples, cbc_dim). The order of parameters is (lambdat, q) for 2D, (lambda1, q, lambda2) for 3D, and (q, mchirp, lambda1, lambda2) for 4D.
     """
 
     samples = read_prior_or_posterior_file(posterior_file, cbc_dim)
@@ -180,8 +161,8 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
     elif cbc_dim == 4:
         return np.stack(
             (
-                samples["m1_source"],
-                samples["m2_source"],
+                samples["q"],
+                samples["mc_source"],
                 samples["lambda1"],
                 samples["lambda2"],
             ),
@@ -225,8 +206,16 @@ def _get_mean_mchirp_for_cbc_event(posterior_file: str, cbc_dim: int) -> float:
 
 
 def _get_q_range(samples_file: str, cbc_dim: int) -> tuple[float, float]:
-    """Return the min and max values of q from the given samples file"""
+    """Return the min and max values of q samples from the given samples file"""
 
     samples = read_prior_or_posterior_file(samples_file, cbc_dim=cbc_dim)
     q = samples["q"]
     return np.min(q).item(), np.max(q).item()
+
+
+def _get_mchirp_range(samples_file: str, cbc_dim: int) -> tuple[float, float]:
+    """Return the min and max values of chirp mass samples from the given samples file"""
+
+    samples = read_prior_or_posterior_file(samples_file, cbc_dim=cbc_dim)
+    mc = samples["mc_source"]
+    return np.min(mc).item(), np.max(mc).item()

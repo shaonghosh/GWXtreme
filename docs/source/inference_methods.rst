@@ -10,7 +10,7 @@ These approximation variants are:
 
 * 2D method: uses :math:`(q, \tilde{\Lambda})` PE samples, as well as the mean chirp mass from the PE posterior
 * 3D method: uses :math:`(q, \Lambda_1, \Lambda_2)` PE samples, as well as the mean chirp mass from the PE posterior
-* 4D method: uses :math:`(m_1, m_2, \Lambda_1, \Lambda_2)` PE samples
+* 4D method: uses :math:`(q, \mathcal{M}, \Lambda_1, \Lambda_2)` PE samples (e.g. using chirp mass samples instead of only the mean)
 
 **The recommended variant is the 3D method**, because standard uniform priors over :math:`(\Lambda_1, \Lambda_2)` can be used in obtaining the PE data,
 which means any GW waveform model, including inspiral-merger-ringdown models, can also be used for the PE.

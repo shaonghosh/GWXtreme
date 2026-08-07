@@ -32,7 +32,7 @@ To summarize the requirements:
 
     * The ``gw-3d`` method (recommended) requires PE samples for :math:`(q, \Lambda_1, \Lambda_2)`, with sampling conducted using uniform priors over :math:`(\Lambda_1, \Lambda_2)`
     * The ``gw-2d`` method requires PE samples for :math:`(q, \tilde{\Lambda})`, with sampling conducted using uniform priors over :math:`(\tilde{\Lambda}, \delta \tilde{\Lambda})`
-    * The ``gw-4d`` method requires PE samples for :math:`(m_1, m_2, \Lambda_1, \Lambda_2)`, with sampling conducted using uniform priors over :math:`(\Lambda_1, \Lambda_2)`
+    * The ``gw-4d`` method requires PE samples for :math:`(q, \mathcal{M}, \Lambda_1, \Lambda_2)`, with sampling conducted using uniform priors over :math:`(\Lambda_1, \Lambda_2)`
 
 Pulsar Mass-Radius (NICER observation) Data
 -----------------------------------------------------
