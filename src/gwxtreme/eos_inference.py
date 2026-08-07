@@ -46,12 +46,11 @@ import pathlib
 from typing import Literal
 
 import emcee
-import h5py
 import numpy as np
 import ray
 
 from gwxtreme.density_estimation import BoundedKDE
-from gwxtreme.utils import _get_q_range, read_prior_or_posterior_file
+from gwxtreme.utils import _get_q_range
 
 try:
     from gwxtreme.flow_density_estimation import BayesianNormalizingFlow, EnsembleNormalizingFlow
@@ -179,9 +178,7 @@ class ModelSelector:
         assert density_est_method in ["kde", "bayes-flow", "ensemble-flow"]
 
         logger.info(
-            "Creating ModelSelector with\nevent_type={}\ndensity_est_method={}\nflow_file={}\nposterior_file={}\nprior_file={}".format(
-                event_type, density_est_method, flow_file, posterior_file, prior_file
-            )
+            f"Creating ModelSelector with\nevent_type={event_type}\ndensity_est_method={density_est_method}\nflow_file={flow_file}\nposterior_file={posterior_file}\nprior_file={prior_file}"
         )
 
         self.event_type = event_type
@@ -190,7 +187,7 @@ class ModelSelector:
         if self.event_type == "gw-2d":
             self.mean_mchirp = _get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=2)
 
-            logger.info("Mean chirp mass from CBC posterior = {}".format(self.mean_mchirp))
+            logger.info(f"Mean chirp mass from CBC posterior = {self.mean_mchirp}")
 
             if prior_file is not None:
                 self.q_min, self.q_max = _get_q_range(prior_file, cbc_dim=2)
@@ -199,7 +196,7 @@ class ModelSelector:
             else:
                 self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=2)
 
-            logger.info("q integration range = ({}, {})".format(self.q_min, self.q_max))
+            logger.info(f"q integration range = ({self.q_min}, {self.q_max})")
 
             posterior_samples = get_gw_event_pe_posterior_samples(posterior_file, cbc_dim=2)
             parameter_bounds = [(0.0, np.inf), (0.0, 1.0)]
@@ -214,7 +211,7 @@ class ModelSelector:
             else:
                 self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=3)
 
-            logger.info("q integration range = ({}, {})".format(self.q_min, self.q_max))
+            logger.info(f"q integration range = ({self.q_min}, {self.q_max})")
 
             posterior_samples = get_gw_event_pe_posterior_samples(posterior_file, cbc_dim=3)
             parameter_bounds = [(0.0, np.inf), (0.0, 1.0), (0.0, np.inf)]
@@ -252,8 +249,8 @@ class ModelSelector:
                 self.m_min = np.min(posterior_samples[:, 0])
                 self.m_max = np.max(posterior_samples[:, 0])
 
-        logger.info("Posterior samples shape = {}".format(posterior_samples.shape))
-        logger.info("Posterior density estimation bounds = {}".format(parameter_bounds))
+        logger.info(f"Posterior samples shape = {posterior_samples.shape}")
+        logger.info(f"Posterior density estimation bounds = {parameter_bounds}")
 
         # Check if flow features are available in this version of the package. If not, code will terminate here with error.
         if density_est_method in ["bayes-flow", "ensemble-flow"] and (BayesianNormalizingFlow is None or EnsembleNormalizingFlow is None):
@@ -397,7 +394,7 @@ class ModelSelector:
         bayes_factors = target_eos_evidences / reference_eos_evidences
 
         if save_file is not None:
-            logger.info("Saving Bayes factors to {}".format(save_file))
+            logger.info(f"Saving Bayes factors to {save_file}")
             results = {
                 "target_eos": next(
                     (eos for eos in [target_eos_name, target_eos_mass_lambda_file, target_eos_mass_radius_k_file] if eos is not None), None
@@ -502,15 +499,13 @@ class ModelSelector:
         """
 
         logger.info(
-            "Computing evidence for EOS:\neos_name={}\neos_mass_lambda_file={}\neos_mass_radius_k_file={}".format(
-                eos_name, eos_mass_lambda_file, eos_mass_radius_k_file
-            )
+            f"Computing evidence for EOS:\neos_name={eos_name}\neos_mass_lambda_file={eos_mass_lambda_file}\neos_mass_radius_k_file={eos_mass_radius_k_file}"
         )
 
         interpolator = EOSInterpolator(eos_name=eos_name, mass_lambda_file=eos_mass_lambda_file, mass_radius_k_file=eos_mass_radius_k_file)
         eos_path = self._get_path_for_eos(interpolator, n_grid)
 
-        logger.info("EOS path has shape {}".format(eos_path.shape))
+        logger.info(f"EOS path has shape {eos_path.shape}")
 
         eos_evidences = self._path_evidence(eos_path, n_resamplings, n_jobs)
 
@@ -623,8 +618,8 @@ class ModelSelector:
             m2 = np.linspace(self.m2_min, self.m2_max, n_grid)
             m1_grid, m2_grid = np.meshgrid(m1, m2)
 
-            lambda1 = eos_interpolator.get_lambda(m1_grid.reshape((n_grid**2))).reshape((n_grid, n_grid))
-            lambda2 = eos_interpolator.get_lambda(m2_grid.reshape((n_grid**2))).reshape((n_grid, n_grid))
+            lambda1 = eos_interpolator.get_lambda(m1_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
+            lambda2 = eos_interpolator.get_lambda(m2_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
 
             points = np.stack((m1_grid, m2_grid, lambda1, lambda2), axis=-1)
 
@@ -672,7 +667,7 @@ class ModelSelector:
 
         original_evidence = self._integrate_eos_path(points)
         if n_resamplings > 0 and self.density_est_method != "ensemble-flow":
-            logger.info("Re-computing evidence over {} re-samplings of the density estimator".format(n_resamplings))
+            logger.info(f"Re-computing evidence over {n_resamplings} re-samplings of the density estimator")
 
             evidences = np.empty(n_resamplings + 1)
             evidences[0] = original_evidence
@@ -697,7 +692,7 @@ class ModelSelector:
                 else:
                     n_cores = min(n_jobs, max_cores)
 
-                logger.info("Using parallel execution with {} cores".format(n_cores))
+                logger.info(f"Using parallel execution with {n_cores} cores")
 
                 # Spin up Ray with the specific cpu ceiling if not already running
                 if not ray.is_initialized():
@@ -711,7 +706,7 @@ class ModelSelector:
                 points_ref = ray.put(points)
 
                 # Launch parallel tasks
-                logger.info("Dispatching {} EOS evidence integration tasks to Ray cluster".format(n_resamplings))
+                logger.info(f"Dispatching {n_resamplings} EOS evidence integration tasks to Ray cluster")
                 results = []
                 for _ in range(n_resamplings):
                     results.append(
@@ -886,9 +881,7 @@ class JointModelSelector:
         """
 
         logger.info(
-            "Creating JointModelSelector with\nevent_types={}\ndensity_est_method={}\nflow_files={}\nposterior_files={}\nprior_files={}".format(
-                event_types, density_est_method, flow_files, posterior_files, prior_files
-            )
+            f"Creating JointModelSelector with\nevent_types={event_types}\ndensity_est_method={density_est_method}\nflow_files={flow_files}\nposterior_files={posterior_files}\nprior_files={prior_files}"
         )
 
         if density_est_method != "kde":
@@ -1032,7 +1025,7 @@ class JointModelSelector:
             Array of joint Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
         """
 
-        target_eos_joint_evidences, target_eos_per_event_evidences = self._compute_joint_eos_evidence(
+        _, target_eos_per_event_evidences = self._compute_joint_eos_evidence(
             eos_name=target_eos_name,
             eos_mass_lambda_file=target_eos_mass_lambda_file,
             eos_mass_radius_k_file=target_eos_mass_radius_k_file,
@@ -1041,7 +1034,7 @@ class JointModelSelector:
             n_jobs=n_jobs,
         )
 
-        reference_eos_joint_evidences, reference_eos_per_event_evidences = self._compute_joint_eos_evidence(
+        _, reference_eos_per_event_evidences = self._compute_joint_eos_evidence(
             eos_name=reference_eos_name,
             eos_mass_lambda_file=reference_eos_mass_lambda_file,
             eos_mass_radius_k_file=reference_eos_mass_radius_k_file,
@@ -1057,7 +1050,7 @@ class JointModelSelector:
         joint_bayes_factors = np.prod(np.array(per_event_bayes_factors), axis=0)
 
         if save_file is not None:
-            logger.info("Saving joint Bayes factors to {}".format(save_file))
+            logger.info(f"Saving joint Bayes factors to {save_file}")
             results = {
                 "target_eos": next(
                     (eos for eos in [target_eos_name, target_eos_mass_lambda_file, target_eos_mass_radius_k_file] if eos is not None), None
@@ -1298,10 +1291,8 @@ class ParameterizedEoSSampler:
             taken from the min and max values of q in each event's posterior samples.
         """
         logger.info(
-            "Creating ParameterizedEoSSampler with\nevent_types={}\ndensity_est_method={}\nflow_files={}\nposterior_files={} \
-                \nprior_files={}\nparameterization={}\neos_prior_bounds={}".format(
-                event_types, density_est_method, flow_files, posterior_files, prior_files, parameterization, eos_prior_bounds
-            )
+            f"Creating ParameterizedEoSSampler with\nevent_types={event_types}\ndensity_est_method={density_est_method}\nflow_files={flow_files}\nposterior_files={posterior_files} \
+                \nprior_files={prior_files}\nparameterization={parameterization}\neos_prior_bounds={eos_prior_bounds}"
         )
 
         self.eos_prior_bounds = eos_prior_bounds
@@ -1349,7 +1340,12 @@ class ParameterizedEoSSampler:
         if not is_valid_eos(parameters, self.parameterization, largest_ns_mass=self.largest_observed_ns_mass):
             return -np.inf
 
-        joint_evidence, _ = self.joint_selector.compute_parameterized_eos_joint_evidence(parameters, self.parameterization)
+        try:
+            joint_evidence, _ = self.joint_selector.compute_parameterized_eos_joint_evidence(parameters, self.parameterization)
+        except RuntimeError as e:
+            logger.error(f"RuntimeError in _log_post({parameters}): {e}")
+            return -np.inf
+
         log_evidence = np.log(joint_evidence)
         return log_evidence
 
@@ -1367,7 +1363,7 @@ class ParameterizedEoSSampler:
             directly to the ``emcee`` sampler
         """
 
-        logger.info("Initializing {} MCMC walkers".format(nwalkers))
+        logger.info(f"Initializing {nwalkers} MCMC walkers")
 
         n_valid_walkers = 0
         state0 = []
@@ -1379,7 +1375,7 @@ class ParameterizedEoSSampler:
             params = np.random.uniform(param_lower_bounds, param_upper_bounds)
 
             if is_valid_eos(params, self.parameterization, largest_ns_mass=self.largest_observed_ns_mass):
-                logger.info("Attempted EOS with parameter vector {} is valid; appending to initial walker state".format(params))
+                logger.info(f"Walker {n_valid_walkers + 1} initial state: {params}")
 
                 state0.append(params)
                 n_valid_walkers += 1
@@ -1408,7 +1404,7 @@ class ParameterizedEoSSampler:
             of the autocorr time changes by less than 1% between checks, then the chain is
             considered to have converged.
         nwalkers
-            Number of MCMC walkers to use.
+            Number of MCMC walkers to use. Recommended: 300.
         save_file
             Path to an hdf5 file that will be used to store the sample chain and the associated log
             probability densities. This file can be read after the run with the ``load_samples`` function.
@@ -1420,13 +1416,13 @@ class ParameterizedEoSSampler:
             overwritten with a fresh run. See https://emcee.readthedocs.io/en/stable/tutorials/monitor/
         """
 
-        logger.info("Running MCMC for {} EOS with {} walkers for {} steps".format(self.parameterization, nwalkers, nsteps))
+        logger.info(f"Running MCMC for {self.parameterization} EOS with {nwalkers} walkers for {nsteps} steps")
 
         # Won't be able to create the file if parent dir doesn't exist beforehand
         if not pathlib.Path(save_file).parent.exists():
-            raise FileNotFoundError("Parent directory of given save_file doesn't exist: {}".format(save_file))
+            raise FileNotFoundError(f"Parent directory of given save_file doesn't exist: {save_file}")
 
-        logger.info("Saving samples and logp chains to {}".format(save_file))
+        logger.info(f"Saving samples and logp chains to {save_file}")
         backend = emcee.backends.HDFBackend(save_file)
 
         backend_is_empty = False
@@ -1440,8 +1436,19 @@ class ParameterizedEoSSampler:
             initial_state = self._initialize_walkers(nwalkers)
         else:
             initial_state = None
+            logger.info(f"Continuing existing MCMC chain from {save_file}. Initial state: {backend.get_chain()[-1]}")
 
-        sampler = emcee.EnsembleSampler(nwalkers=nwalkers, ndim=4, log_prob_fn=self._log_post, backend=backend)
+        sampler = emcee.EnsembleSampler(
+            nwalkers=nwalkers,
+            ndim=4,
+            log_prob_fn=self._log_post,
+            backend=backend,
+            moves=[
+                (emcee.moves.StretchMove(), 0.2),
+                (emcee.moves.DEMove(), 0.6),
+                (emcee.moves.DESnookerMove(), 0.2),
+            ],
+        )
 
         # Track average autocorrelation time to determine convergence
         old_tau = np.inf
@@ -1459,7 +1466,7 @@ class ParameterizedEoSSampler:
             # Check for convergence (chain is longer than 100 *
             # the autocorr time and if the estimated autocorr
             # time has changed by less than 1%)
-            converged = np.all(tau * 100 < sampler.iteration) and np.all(np.abs(old_tau - tau) / tau < 0.01)
+            converged = np.all(tau * 100 < (sampler.iteration * nwalkers)) and np.all(np.abs(old_tau - tau) / tau < 0.01)
             if converged:
                 logger.info(f"Sampler converged at iteration {sampler.iteration} with estimated autocorrelation time {tau}")
                 break

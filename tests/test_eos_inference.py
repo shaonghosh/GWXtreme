@@ -6,6 +6,10 @@ from gwxtreme.eos_inference import ModelSelector, ParameterizedEoSSampler, load_
 
 
 def test_model_selector(model_selector_instance: ModelSelector, tmp_path):
+    """Tests that the ModelSelector can initialize and compute Bayes factors between
+    LAL models without failure. Parallel computation is not tested.
+    """
+
     savepath = tmp_path / "model_selector_test_output.json"
     result = model_selector_instance.compute_eos_evidence_ratio("APR4_EPP", "SLY", n_resamplings=10, save_file=str(savepath))
     with open(savepath) as f:
@@ -16,6 +20,11 @@ def test_model_selector(model_selector_instance: ModelSelector, tmp_path):
 
 
 def test_sampler(sampler_instance: ParameterizedEoSSampler, tmp_path):
+    """Tests that the ParameterizedEoSSampler can initialize and run MCMC
+    for a few steps without failure. This also serves as a test of the
+    underlying JointModelSelector which the sampler initializes.
+    """
+
     savepath = tmp_path / "sampler_test_output.hdf5"
     sampler_instance.run_sampler(nsteps=10, nwalkers=10, save_file=str(savepath))
     samples = load_samples(savepath, burn_in_frac=0, thin=1)
@@ -31,6 +40,11 @@ def test_sampler(sampler_instance: ParameterizedEoSSampler, tmp_path):
     ],
 )
 def test_model_selection_from_files(model_selector_instance: ModelSelector, eos_name, eos_mass_lambda_file, eos_mass_radius_k_file):
+    """Tests that the Bayes factor of the LAL APR4_EPP versus APR4_EPP from a mass-lambda
+    or mass-radius-Love file is ~ 1.
+    Slight differences in the evidences in this case are due to the usage of an
+    interpolator over different sets of points from the EOS curve.
+    """
     result = model_selector_instance.compute_eos_evidence_ratio(
         target_eos_name=eos_name,
         reference_eos_mass_lambda_file=eos_mass_lambda_file,

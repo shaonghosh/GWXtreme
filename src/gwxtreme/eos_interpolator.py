@@ -48,9 +48,7 @@ def get_lal_named_eos(eos_name: str):
     return lalsimulation.SimNeutronStarEOSByName(eos_name)
 
 
-def get_parameterized_eos(
-    params: np.ndarray | tuple | list, parameterization: Literal["spectral", "polytrope"]
-) -> tuple[scipy.interpolate.interp1d, float, float]:
+def get_parameterized_eos(params: np.ndarray | tuple | list, parameterization: Literal["spectral", "polytrope"]):
     """Retrieve the ``lalsimulation`` parameterized EOS model with the given
     parameterization and parameter values.
 
