@@ -211,8 +211,8 @@ def plot_parameterized_eos_constraints(
     named_eos_list: list[str] | None = None,
     prior_constraints_file: str | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
-    colors = ["#64ACDC", "#c06161", "#6b9e64", "#82ca84"]
-    hatches = ["", "|", "\\", "/"]
+    colors = ["#64ACDC", "#c06161", "#6b9e64", "#f1b1f2"]
+    hatches = ["", "|", "\\", "-"]
     named_eos_styles = ["k--", "g--", "r--", "b--"]
 
     fig, axes = plt.subplots(figsize=(8, 8))
