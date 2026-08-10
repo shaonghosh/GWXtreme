@@ -1339,7 +1339,7 @@ class ParameterizedEoSSampler:
 
         return state0
 
-    def run_sampler(self, nsteps: int, nwalkers: int, save_file: str, reset: bool = True) -> None:
+    def run_sampler(self, nsteps: int, nwalkers: int, save_file: str, reset: bool = True, pool=None) -> None:
         """Runs MCMC to sample EOS parameters from their joint posterior across
         all provided events.
 
@@ -1371,6 +1371,14 @@ class ParameterizedEoSSampler:
             from where the previous run left off, using the last sample in the stored chain as the
             initial state of the walkers. If True (default), anything in ``save_file`` will be
             overwritten with a fresh run. See https://emcee.readthedocs.io/en/stable/tutorials/monitor/
+        pool
+            A multiprocessing pool object that will be used by emcee to parallelize the sampling
+            steps over the walkers.
+
+            Example:
+
+            ``with multiprocessing.Pool(processes=96) as pool:``
+            ``    sampler.run_sampler(100, nwalkers=500, save_file=save_file, pool=pool)``
         """
 
         logger.info(f"Running MCMC for {self.parameterization} EOS with {nwalkers} walkers for {nsteps} steps")
@@ -1405,6 +1413,7 @@ class ParameterizedEoSSampler:
                 (emcee.moves.DEMove(), 0.6),
                 (emcee.moves.DESnookerMove(), 0.2),
             ],
+            pool=pool,
         )
 
         # Track average autocorrelation time to determine convergence
