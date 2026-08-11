@@ -39,10 +39,12 @@ The parameterized inference can therefore be done across multiple
 events.
 """
 
+import atexit
 import json
 import logging
 import os
 import pathlib
+import shutil
 from collections.abc import Sequence
 from typing import Literal
 
@@ -68,6 +70,16 @@ from gwxtreme.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_owns_ray_session = False
+_ray_session_dir: str | None = None
+
+
+def _shutdown_owned_ray():
+    if _owns_ray_session and _ray_session_dir is not None:
+        ray.shutdown()
+        shutil.rmtree(_ray_session_dir, ignore_errors=True)
 
 
 @ray.remote
@@ -270,6 +282,7 @@ class ModelSelector:
         n_grid: int = 200,
         n_resamplings: int = 0,
         n_jobs: int = 1,
+        ray_address: str | None = None,
         save_file: str | None = None,
     ) -> np.ndarray:
         """Compute evidence ratios (Bayes factors) between EOS models.
@@ -342,6 +355,11 @@ class ModelSelector:
 
             NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
 
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
+
         save_file
             Optional path to a json file that will be created and used to store Bayes factor
             results, with this schema:
@@ -363,6 +381,7 @@ class ModelSelector:
             n_grid=n_grid,
             n_resamplings=n_resamplings,
             n_jobs=n_jobs,
+            ray_address=ray_address,
         )
 
         reference_eos_evidences = self._compute_eos_evidence(
@@ -372,6 +391,7 @@ class ModelSelector:
             n_grid=n_grid,
             n_resamplings=n_resamplings,
             n_jobs=n_jobs,
+            ray_address=ray_address,
         )
 
         bayes_factors = target_eos_evidences / reference_eos_evidences
@@ -400,6 +420,7 @@ class ModelSelector:
         n_grid: int = 200,
         n_resamplings: int = 0,
         n_jobs: int = 1,
+        ray_address: str | None = None,
     ) -> np.ndarray:
         """Compute evidence for a single EOS.
 
@@ -476,6 +497,11 @@ class ModelSelector:
 
             NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
 
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
+
         Returns
         -------
             Array of evidences with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...].
@@ -490,7 +516,7 @@ class ModelSelector:
 
         logger.info(f"EOS path has shape {eos_path.shape}")
 
-        eos_evidences = self._path_evidence(eos_path, n_resamplings, n_jobs)
+        eos_evidences = self._path_evidence(eos_path, n_resamplings, n_jobs, ray_address)
 
         return eos_evidences
 
@@ -620,7 +646,7 @@ class ModelSelector:
 
         return points
 
-    def _path_evidence(self, points: np.ndarray, n_resamplings: int = 0, n_jobs: int = 1) -> np.ndarray:
+    def _path_evidence(self, points: np.ndarray, n_resamplings: int = 0, n_jobs: int = 1, ray_address: str | None = None) -> np.ndarray:
         """Compute the evidence(s) of the EOS line characterized by
         ``points`` over the event posterior density.
 
@@ -648,6 +674,11 @@ class ModelSelector:
                 - Any other given value will fall back to the default option
 
             NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
 
         Returns
         -------
@@ -686,7 +717,23 @@ class ModelSelector:
                 # Spin up Ray with the specific cpu ceiling if not already running
                 if not ray.is_initialized():
                     logger.info("Initializing Ray")
-                    ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.WARNING)
+
+                    if ray_address is not None:
+                        # Connecting to a user-specified existing cluster: resource
+                        # arguments can't be combined with `address`, and this process
+                        # must never manage the lifecycle of a cluster it didn't create.
+                        ray.init(address=ray_address, log_to_driver=False, logging_level=logging.WARNING)
+                    else:
+                        ctx = ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.WARNING)
+
+                        # Register shutdown procedure to kill Ray processes and remove the
+                        # session dir it creates in /tmp/ray. Only done when this call is
+                        # the one that started the cluster.
+                        global _owns_ray_session, _ray_session_dir
+                        _owns_ray_session = True
+                        _ray_session_dir = ctx.address_info["session_dir"]  # type: ignore[attr-defined]
+                        atexit.register(_shutdown_owned_ray)
+
                 else:
                     logger.info("Available Ray cluster already exists; connecting to it")
 
@@ -857,10 +904,6 @@ class JointModelSelector:
             If None, the bounds on the respective integration parameter(s) will be taken from the min and max of the posterior samples.
         """
 
-        logger.info(
-            f"Creating JointModelSelector with\nevent_types={event_types}\ndensity_est_method={density_est_method}\nflow_files={flow_files}\nposterior_files={posterior_files}"
-        )
-
         if density_est_method != "kde":
             assert flow_files is not None, (
                 "If using 'bayes-flow' or 'ensemble-flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
@@ -904,6 +947,7 @@ class JointModelSelector:
         n_grid: int = 200,
         n_resamplings: int = 0,
         n_jobs: int = 1,
+        ray_address: str | None = None,
         save_file: str | None = None,
     ) -> np.ndarray:
         """Compute joint evidence ratios (Bayes factors) between EOS models.
@@ -979,6 +1023,11 @@ class JointModelSelector:
 
             NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
 
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
+
         save_file
             Optional path to a json file that will be created and used to store Bayes factor
             results, with this schema:
@@ -1001,6 +1050,7 @@ class JointModelSelector:
             n_grid=n_grid,
             n_resamplings=n_resamplings,
             n_jobs=n_jobs,
+            ray_address=ray_address,
         )
 
         _, reference_eos_per_event_evidences = self._compute_joint_eos_evidence(
@@ -1010,6 +1060,7 @@ class JointModelSelector:
             n_grid=n_grid,
             n_resamplings=n_resamplings,
             n_jobs=n_jobs,
+            ray_address=ray_address,
         )
 
         per_event_bayes_factors = [
@@ -1044,6 +1095,7 @@ class JointModelSelector:
         n_grid: int = 200,
         n_resamplings: int = 0,
         n_jobs: int = 1,
+        ray_address: str | None = None,
     ) -> tuple[np.ndarray, list[np.ndarray]]:
         """Compute joint evidence for a single EOS.
 
@@ -1121,6 +1173,11 @@ class JointModelSelector:
 
             NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
 
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
+
         Returns
         -------
             Tuple containing an array of values for the joint evidence with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...] and a list of evidence arrays (with the same size/structure) for each individual event
@@ -1137,6 +1194,7 @@ class JointModelSelector:
                 n_grid=n_grid,
                 n_resamplings=n_resamplings,
                 n_jobs=n_jobs,
+                ray_address=ray_address,
             )
             per_event_evidences.append(evidences)
             joint_evidences *= evidences
@@ -1249,10 +1307,6 @@ class ParameterizedEoSSampler:
 
             If None, the bounds on the respective integration parameter(s) will be taken from the min and max of the posterior samples.
         """
-        logger.info(
-            f"Creating ParameterizedEoSSampler with\nevent_types={event_types}\ndensity_est_method={density_est_method}\nflow_files={flow_files}\nposterior_files={posterior_files} \
-                \nparameterization={parameterization}\neos_prior_bounds={eos_prior_bounds}"
-        )
 
         self.eos_prior_bounds = eos_prior_bounds
         self.parameterization = parameterization
@@ -1320,7 +1374,7 @@ class ParameterizedEoSSampler:
             directly to the ``emcee`` sampler
         """
 
-        logger.info(f"Initializing {nwalkers} MCMC walkers")
+        logger.info(f"Initializing {nwalkers} MCMC walkers. EOS prior bounds: {self.eos_prior_bounds}")
 
         n_valid_walkers = 0
         state0 = []
