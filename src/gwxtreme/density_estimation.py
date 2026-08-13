@@ -57,7 +57,7 @@ def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndar
     assert x.ndim == 2, "x should be an (N, D) shaped array"
 
     # To prevent transforming values at the bounds to -inf
-    eps = 1e-4  # (forces the distance of x from any of its bounds to be >= 1e-4)
+    eps = 1e-6  # (forces the distance of x from any of its bounds to be >= 1e-6)
 
     transformed = []
     for dim in range(x.shape[-1]):
@@ -77,8 +77,8 @@ def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndar
 
         # no inf bounds, bounded above and below
         else:
-            a = (x[:, dim] - bounds[dim][0]) / (bounds[dim][1] - bounds[dim][0])
-            z = np.log(a / (1 - a) + eps)
+            a = (x[:, dim] - bounds[dim][0] + eps) / (bounds[dim][1] - bounds[dim][0])
+            z = np.log(a / (1 - a))
 
         transformed.append(z)
 
@@ -152,7 +152,7 @@ def get_log_abs_det_jacobian(x: np.ndarray, bounds: list[tuple[float, float]]) -
     assert x.ndim == 2, "x should be an (N, D) shaped array"
 
     # To prevent Jacobian determinant of +inf
-    eps = 1e-4  # (forces the distance of x from one of its bounds to be >= 1e-4)
+    eps = 1e-6  # (forces the distance of x from one of its bounds to be >= 1e-6)
 
     ladj = np.zeros_like(x[:, 0])
 

@@ -24,6 +24,8 @@ dependencies = [
     "matplotlib",
     "lalsuite",
     "ray>=2.56.0",
+    "onnxruntime>=1.28.0",
+    "onnxscript>=0.7.1",
 ]
 
 [project.optional-dependencies]

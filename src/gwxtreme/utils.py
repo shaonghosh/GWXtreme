@@ -148,6 +148,7 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
                 samples["q"],
             ),
             axis=-1,
+            dtype=np.float32,
         )
     elif cbc_dim == 3:
         return np.stack(
@@ -157,6 +158,7 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
                 samples["lambda2"],
             ),
             axis=-1,
+            dtype=np.float32,
         )
     elif cbc_dim == 4:
         return np.stack(
@@ -167,6 +169,7 @@ def get_gw_event_pe_posterior_samples(posterior_file: str, cbc_dim: int) -> np.n
                 samples["lambda2"],
             ),
             axis=-1,
+            dtype=np.float32,
         )
     else:
         raise NotImplementedError()
