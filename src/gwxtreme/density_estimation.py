@@ -29,12 +29,14 @@ Implemented classes:
         Wrapper class for a collection of several PyTorch/Zuko-based MAF models
 """
 
+from collections.abc import Sequence
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
 
 
-def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarray:
+def to_latent_space(x: np.ndarray, bounds: Sequence[tuple[float, float]]) -> np.ndarray:
     """Transform points to the (unbounded) latent space used by the underlying density estimator.
 
     This transformation operates on each parameter of the data (iterating over the second dimension
@@ -56,9 +58,6 @@ def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndar
     """
     assert x.ndim == 2, "x should be an (N, D) shaped array"
 
-    # To prevent transforming values at the bounds to -inf
-    eps = 1e-6  # (forces the distance of x from any of its bounds to be >= 1e-6)
-
     transformed = []
     for dim in range(x.shape[-1]):
         inf_bounds = np.logical_not(np.isfinite(bounds[dim]))
@@ -69,15 +68,15 @@ def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndar
 
         # upper bound is inf, bounded below only
         elif inf_bounds[1]:
-            z = np.log(x[:, dim] - bounds[dim][0] + eps)
+            z = np.log(x[:, dim] - bounds[dim][0])
 
         # lower bound is -inf, bounded above only
         elif inf_bounds[0]:
-            z = np.log(bounds[dim][1] - x[:, dim] + eps)
+            z = np.log(bounds[dim][1] - x[:, dim])
 
         # no inf bounds, bounded above and below
         else:
-            a = (x[:, dim] - bounds[dim][0] + eps) / (bounds[dim][1] - bounds[dim][0])
+            a = (x[:, dim] - bounds[dim][0]) / (bounds[dim][1] - bounds[dim][0])
             z = np.log(a / (1 - a))
 
         transformed.append(z)
@@ -85,7 +84,7 @@ def to_latent_space(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndar
     return np.stack(transformed, axis=-1)
 
 
-def to_data_space(z: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarray:
+def to_data_space(z: np.ndarray, bounds: Sequence[tuple[float, float]]) -> np.ndarray:
     """Transform points to the (bounded) data space.
 
     This transformation inverts the transformation done by _to_latent_space.
@@ -127,7 +126,7 @@ def to_data_space(z: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarra
     return np.stack(transformed, axis=-1)
 
 
-def get_log_abs_det_jacobian(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarray:
+def get_log_abs_det_jacobian(x: np.ndarray, bounds: Sequence[tuple[float, float]]) -> np.ndarray:
     """Compute the log of the absolute value of the determinant of the jacobian (ladj) of the
     data-to-latent-space transformation.
 
@@ -151,9 +150,6 @@ def get_log_abs_det_jacobian(x: np.ndarray, bounds: list[tuple[float, float]]) -
 
     assert x.ndim == 2, "x should be an (N, D) shaped array"
 
-    # To prevent Jacobian determinant of +inf
-    eps = 1e-6  # (forces the distance of x from one of its bounds to be >= 1e-6)
-
     ladj = np.zeros_like(x[:, 0])
 
     for dim in range(x.shape[-1]):
@@ -165,15 +161,15 @@ def get_log_abs_det_jacobian(x: np.ndarray, bounds: list[tuple[float, float]]) -
 
         # upper bound is inf, bounded below only
         elif inf_bounds[1]:
-            ladj += -np.log(x[:, dim] - bounds[dim][0] + eps)
+            ladj += -np.log(x[:, dim] - bounds[dim][0])
 
         # lower bound is -inf, bounded above only
         elif inf_bounds[0]:
-            ladj += -np.log(bounds[dim][1] - x[:, dim] + eps)
+            ladj += -np.log(bounds[dim][1] - x[:, dim])
 
         # no inf bounds, bounded above and below
         else:
-            ladj += np.log(bounds[dim][1] - bounds[dim][0]) - np.log(x[:, dim] - bounds[dim][0] + eps) - np.log(bounds[dim][1] - x[:, dim] + eps)
+            ladj += np.log(bounds[dim][1] - bounds[dim][0]) - np.log(x[:, dim] - bounds[dim][0]) - np.log(bounds[dim][1] - x[:, dim])
 
     return ladj
 
@@ -181,7 +177,7 @@ def get_log_abs_det_jacobian(x: np.ndarray, bounds: list[tuple[float, float]]) -
 class BoundedKDE:
     """Kernel Density Estimator, applicable to bounded data using transformation."""
 
-    def __init__(self, posterior_samples: np.ndarray, bounds: list[tuple[float, float]]):
+    def __init__(self, posterior_samples: np.ndarray, bounds: Sequence[tuple[float, float]]):
         """
         Parameters
         ----------
@@ -196,11 +192,9 @@ class BoundedKDE:
         self.bounds = bounds
 
         Z = to_latent_space(self.posterior_samples, self.bounds)
+        finite_valued_points = np.all(np.isfinite(Z), axis=1)
 
-        # Scipy KDE fails if there are inf or -inf values
-        Z = np.nan_to_num(Z, posinf=1e4, neginf=-1e4)
-
-        self.base_kde = scipy.stats.gaussian_kde(Z.T)
+        self.base_kde = scipy.stats.gaussian_kde(Z[finite_valued_points].T)
 
     def log_pdf(self, x: np.ndarray, resample: bool = False) -> np.ndarray:
         """Compute log probability densities of individual points.
@@ -229,11 +223,11 @@ class BoundedKDE:
         z = to_latent_space(x, self.bounds)
         ladj = get_log_abs_det_jacobian(x, self.bounds)
 
-        # Scipy KDE fails if there are inf or -inf values
-        z = np.nan_to_num(z, posinf=1e4, neginf=-1e4)
+        finite_valued_points = np.all(np.isfinite(z), axis=1)
 
-        lp = kde.logpdf(z.T).T + ladj
-        lp = np.nan_to_num(lp, nan=-np.inf)
+        lp = np.empty(x.shape[0], dtype=np.float64)
+        lp[finite_valued_points] = kde.logpdf(z[finite_valued_points].T).T + ladj[finite_valued_points]
+        lp[~finite_valued_points] = -np.inf
         return lp
 
     def pdf(self, x: np.ndarray, resample: bool = False) -> np.ndarray:

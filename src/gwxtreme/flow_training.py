@@ -234,23 +234,6 @@ def train_flow(
     return mean_epoch_train_losses, mean_epoch_val_losses
 
 
-def evaluate_flow(train_savedir: str):
-    ckpt_file = pathlib.Path(train_savedir) / "best_checkpoint.pth"
-    ckpt = torch.load(ckpt_file, map_location="cpu", weights_only=False)
-
-    flow_class = getattr(zuko.flows, ckpt["flow_class"])
-    flow_kwargs = ckpt["flow_kwargs"]
-
-    flow: torch.nn.Module = flow_class(**flow_kwargs)
-    flow.load_state_dict(ckpt["flow_state_dict"])
-    flow.eval()
-
-    testset_file = pathlib.Path(train_savedir) / "test_data.pth"
-    testset = torch.load(testset_file, map_location="cpu")
-
-    # TODO
-
-
 def evaluate_over_grid(f, grid_bounds: list[tuple[float, float]], grid_size: int = 50):
     ndim = len(grid_bounds)
 

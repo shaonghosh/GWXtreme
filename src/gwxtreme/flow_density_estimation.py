@@ -46,16 +46,18 @@ class EnsembleNormalizingFlow:
 
         Returns
         -------
-            List of arrays, 1 for each flow in the ensemble. Each array contains the log densities for that model with shape (N_points,).
+            List of arrays, one for each flow in the ensemble. Each array contains the log densities for that model with shape (N_points,).
         """
 
         z = to_latent_space(x, self.bounds)
         ladj = get_log_abs_det_jacobian(x, self.bounds)
+
+        finite_valued_points = np.all(np.isfinite(z), axis=1)
+
         lps = []
         for flow in self.sessions:
-            lp = flow.run([flow.get_outputs()[0].name], {flow.get_inputs()[0].name: z})[0]
-            lp += ladj
-            lp = np.nan_to_num(lp, nan=-np.inf)
+            lp: np.ndarray = flow.run([flow.get_outputs()[0].name], {flow.get_inputs()[0].name: z})[0] + ladj
+            lp[~finite_valued_points] = -np.inf
             lps.append(lp)
 
         return lps
@@ -70,7 +72,7 @@ class EnsembleNormalizingFlow:
 
         Returns
         -------
-            List of arrays, 1 for each flow in the ensemble. Each array contains the densities for that model with shape (N_points,).
+            List of arrays, one for each flow in the ensemble. Each array contains the densities for that model with shape (N_points,).
         """
 
         p = [np.exp(lp) for lp in self.log_pdf(x)]
