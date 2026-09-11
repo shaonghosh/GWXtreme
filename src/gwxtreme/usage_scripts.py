@@ -208,11 +208,16 @@ def plot_parameterized_eos_constraints(
     constraints_files: list[str],
     labels: list[str],
     save_file: str,
+    colors: list[str] | None = None,
     named_eos_list: list[str] | None = None,
     prior_constraints_file: str | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
-    colors = ["#64ACDC", "#c06161", "#6b9e64", "#f1b1f2"]
     hatches = ["", "|", "\\", "-"]
+    alphas = [0.4, 0.4, 0.4, 0.4]
+    if not colors:
+        colors = ["#64ACDC", "#c06161", "#6b9e64", "#e48ce6"]
+        facecolors = ["#64ACDC", "#c06161", "#6b9e64", "none"]
+        alphas[-1] = 1.0
     named_eos_styles = ["k--", "g--", "r--", "b--"]
 
     fig, axes = plt.subplots(figsize=(8, 8))
@@ -220,7 +225,7 @@ def plot_parameterized_eos_constraints(
     plt.rc("ytick", direction="out", color="black")
     plt.rc("lines", linewidth=2)
 
-    for file, label, color, hatch in zip(constraints_files, labels, colors, hatches):
+    for file, label, color, hatch, alpha, fc in zip(constraints_files, labels, colors, hatches, alphas, facecolors):
         constraints = np.loadtxt(file)
         density = constraints[:, 0]
         logp_CIlow = constraints[:, 1]
@@ -233,7 +238,8 @@ def plot_parameterized_eos_constraints(
             logp_CIlow,
             logp_CIup,
             color=color,
-            alpha=0.45,
+            facecolor=fc,
+            alpha=alpha,
             label=label,
             zorder=1.0,
             hatch=hatch,
@@ -268,6 +274,9 @@ def plot_parameterized_eos_constraints(
         axes.plot(log10_density, logp_min, color="black", linestyle="dotted", lw=1.3)
         axes.plot(log10_density, logp_max, color="black", linestyle="dotted", label="prior extrema", lw=1.3)
 
+    ylim = axes.get_ylim()
+    axes.fill_betweenx(ylim, 17.905258286370866, 18.051086814873575, color="gray", alpha=0.25)
+    axes.set_ylim(ylim)
     axes.set_xlim(left=np.min(log10_density), right=np.max(log10_density))
     axes.set_xlabel(r"$\log_{10}(\frac{\rho}{\mathrm{g \, cm^{-3}}})$", fontsize=17)
     axes.set_ylabel(r"$\log_{10}(\frac{p}{\mathrm{dyn \, cm^{-2}}})$", fontsize=17)
@@ -281,11 +290,10 @@ def plot_lambda_dist(
     lambdas_files: list[str],
     labels: list[str],
     save_file: str,
+    colors: list[str] = ["#64ACDC", "#c06161", "#6b9e64", "#f1b1f2"],
     reference_ns_mass: float | None = 1.4,
     true_eos: str | None = None,
 ):
-    colors = ["#64ACDC", "#c06161", "#6b9e64", "#82ca84"]
-
     fig, axes = plt.subplots(figsize=(8, 8))
     plt.rc("xtick", direction="out", color="black")
     plt.rc("ytick", direction="out", color="black")
@@ -293,7 +301,7 @@ def plot_lambda_dist(
 
     for file, color, method_label in zip(lambdas_files, colors, labels):
         Lambdas = np.load(file)
-        axes.hist(
+        n, _, _ = axes.hist(
             Lambdas,
             label=method_label,
             alpha=1.0,
@@ -303,6 +311,10 @@ def plot_lambda_dist(
             color=color,
             histtype="step",
         )
+
+        q5, q95 = np.quantile(Lambdas, [0.05, 0.95])
+        axes.axvline(q5, color=color, linestyle="dashed", alpha=0.5)
+        axes.axvline(q95, color=color, linestyle="dashed", alpha=0.5)
 
     if true_eos:
         eos = lalsimulation.SimNeutronStarEOSByName(true_eos)

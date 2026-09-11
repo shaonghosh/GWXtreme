@@ -59,27 +59,28 @@ def to_latent_space(x: np.ndarray, bounds: Sequence[tuple[float, float]]) -> np.
     assert x.ndim == 2, "x should be an (N, D) shaped array"
 
     transformed = []
-    for dim in range(x.shape[-1]):
-        inf_bounds = np.logical_not(np.isfinite(bounds[dim]))
+    with np.errstate(divide="ignore"):
+        for dim in range(x.shape[-1]):
+            inf_bounds = np.logical_not(np.isfinite(bounds[dim]))
 
-        # already unbounded, no transformation
-        if np.all(inf_bounds):
-            z = x[:, dim]
+            # already unbounded, no transformation
+            if np.all(inf_bounds):
+                z = x[:, dim]
 
-        # upper bound is inf, bounded below only
-        elif inf_bounds[1]:
-            z = np.log(x[:, dim] - bounds[dim][0])
+            # upper bound is inf, bounded below only
+            elif inf_bounds[1]:
+                z = np.log(x[:, dim] - bounds[dim][0])
 
-        # lower bound is -inf, bounded above only
-        elif inf_bounds[0]:
-            z = np.log(bounds[dim][1] - x[:, dim])
+            # lower bound is -inf, bounded above only
+            elif inf_bounds[0]:
+                z = np.log(bounds[dim][1] - x[:, dim])
 
-        # no inf bounds, bounded above and below
-        else:
-            a = (x[:, dim] - bounds[dim][0]) / (bounds[dim][1] - bounds[dim][0])
-            z = np.log(a / (1 - a))
+            # no inf bounds, bounded above and below
+            else:
+                a = (x[:, dim] - bounds[dim][0]) / (bounds[dim][1] - bounds[dim][0])
+                z = np.log(a / (1 - a))
 
-        transformed.append(z)
+            transformed.append(z)
 
     return np.stack(transformed, axis=-1)
 
@@ -152,24 +153,25 @@ def get_log_abs_det_jacobian(x: np.ndarray, bounds: Sequence[tuple[float, float]
 
     ladj = np.zeros_like(x[:, 0])
 
-    for dim in range(x.shape[-1]):
-        inf_bounds = np.logical_not(np.isfinite(bounds[dim]))
+    with np.errstate(divide="ignore"):
+        for dim in range(x.shape[-1]):
+            inf_bounds = np.logical_not(np.isfinite(bounds[dim]))
 
-        # already unbounded, no transformation jacobian
-        if np.all(inf_bounds):
-            continue
+            # already unbounded, no transformation jacobian
+            if np.all(inf_bounds):
+                continue
 
-        # upper bound is inf, bounded below only
-        elif inf_bounds[1]:
-            ladj += -np.log(x[:, dim] - bounds[dim][0])
+            # upper bound is inf, bounded below only
+            elif inf_bounds[1]:
+                ladj += -np.log(x[:, dim] - bounds[dim][0])
 
-        # lower bound is -inf, bounded above only
-        elif inf_bounds[0]:
-            ladj += -np.log(bounds[dim][1] - x[:, dim])
+            # lower bound is -inf, bounded above only
+            elif inf_bounds[0]:
+                ladj += -np.log(bounds[dim][1] - x[:, dim])
 
-        # no inf bounds, bounded above and below
-        else:
-            ladj += np.log(bounds[dim][1] - bounds[dim][0]) - np.log(x[:, dim] - bounds[dim][0]) - np.log(bounds[dim][1] - x[:, dim])
+            # no inf bounds, bounded above and below
+            else:
+                ladj += np.log(bounds[dim][1] - bounds[dim][0]) - np.log(x[:, dim] - bounds[dim][0]) - np.log(bounds[dim][1] - x[:, dim])
 
     return ladj
 

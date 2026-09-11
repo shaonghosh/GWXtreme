@@ -234,7 +234,7 @@ def train_flow(
     return mean_epoch_train_losses, mean_epoch_val_losses
 
 
-def evaluate_over_grid(f, grid_bounds: list[tuple[float, float]], grid_size: int = 50):
+def evaluate_over_grid(f, grid_bounds: list[tuple[float, float]], grid_size: int = 50) -> tuple[np.ndarray, list[np.ndarray]]:
     ndim = len(grid_bounds)
 
     if grid_size**ndim > 1e7:
