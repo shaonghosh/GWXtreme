@@ -22,9 +22,6 @@ Implemented classes:
     ``BoundedKDE``
         Wrapper class for a Scipy Gaussian kernel density estimator
 
-    ``BayesianNormalizingFlow``
-        Wrapper class for a PyTorch/Zuko-based Bayesian MAF model
-
     ``EnsembleNormalizingFlow``
         Wrapper class for a collection of several PyTorch/Zuko-based MAF models
 """

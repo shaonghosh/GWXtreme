@@ -56,9 +56,8 @@ from gwxtreme.density_estimation import BoundedKDE
 from gwxtreme.utils import _get_mchirp_range, _get_q_range
 
 try:
-    from gwxtreme.flow_density_estimation import BayesianNormalizingFlow, EnsembleNormalizingFlow
+    from gwxtreme.flow_density_estimation import EnsembleNormalizingFlow
 except ImportError:
-    BayesianNormalizingFlow = None  # type: ignore
     EnsembleNormalizingFlow = None  # type: ignore
 
 from gwxtreme.eos_interpolator import EOSInterpolator, convert_masses
@@ -83,9 +82,7 @@ def _shutdown_owned_ray():
 
 
 @ray.remote
-def _distributed_eos_evidence_integration(
-    density_estimator: BayesianNormalizingFlow | BoundedKDE, points: np.ndarray, event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"]
-):
+def _distributed_eos_evidence_integration(density_estimator: BoundedKDE, points: np.ndarray, event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"]):
     if event_type == "gw-4d":
         q_arr = points[0, :, 0]
         mchirp_arr = points[:, 0, 1]
@@ -125,7 +122,7 @@ class ModelSelector:
         self,
         posterior_file: str,
         event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"],
-        density_est_method: Literal["kde", "bayes-flow", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
         flow_file: str | None = None,
         integration_bounds: tuple[float, float] | Sequence[tuple[float, float]] | None = None,
     ):
@@ -156,13 +153,10 @@ class ModelSelector:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "bayes-flow" : Bayesian normalizing flow PyTorch/Zuko model, pre-trained on event data and wrapped with gwxtreme.density_estimation.BayesianNormalizingFlow. If chosen, ``flow_file`` must also be passed.
             - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-file`` must be passed.
 
         flow_file
-            If ``density_est_method`` is "bayes-flow", provide a path to a .pt file containing the weights and configuration for a PyTorch/Zuko-based Bayesian Normalizing Flow model.
-            If ``density_est_method`` is "ensemble-flow", provide a path to a directory containing the ensemble of PyTorch/Zuko-based Normalizing Flow models in the form of .pt files (1 per model).
-            In either case, the .pt model files should correspond to models trained on the (transformed) posterior sample data for the given event, with the model parameterization matching that required based on ``event_type``.
+            If ``density_est_method`` is "ensemble-flow", provide a path to a directory containing the ensemble of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         integration_bounds
             Bounds for the EOS evidence integral.
@@ -177,7 +171,7 @@ class ModelSelector:
         """
 
         assert event_type in ["gw-2d", "gw-3d", "gw-4d", "psr"]
-        assert density_est_method in ["kde", "bayes-flow", "ensemble-flow"]
+        assert density_est_method in ["kde", "ensemble-flow"]
 
         logger.info(
             f"Creating ModelSelector with\nevent_type={event_type}\ndensity_est_method={density_est_method}\nflow_file={flow_file}\nposterior_file={posterior_file}"
@@ -248,21 +242,12 @@ class ModelSelector:
         logger.info(f"Posterior density estimation bounds = {parameter_bounds}")
 
         # Check if flow features are available in this version of the package. If not, code will terminate here with error.
-        if density_est_method in ["bayes-flow", "ensemble-flow"] and (BayesianNormalizingFlow is None or EnsembleNormalizingFlow is None):
+        if density_est_method == "ensemble-flow" and EnsembleNormalizingFlow is None:
             raise NotImplementedError(
-                "'bayes-flow' and 'ensemble-flow' density estimation methods are not implemented in this version of GWXtreme. \
+                "'ensemble-flow' density estimation method is not implemented in this version of GWXtreme. \
                     Please use the available KDE implementation by specifying density_est_method='kde' (the default value)."
             )
 
-        if density_est_method == "bayes-flow":
-            assert flow_file is not None, (
-                "To use 'bayes-flow' density estimator, must provide a path to the flow model file via the ``flow_file`` argument"
-            )
-            self.density_estimator = BayesianNormalizingFlow(
-                posterior_samples=posterior_samples,
-                bounds=parameter_bounds,
-                flow_file=flow_file,
-            )
         elif density_est_method == "kde":
             self.density_estimator = BoundedKDE(posterior_samples=posterior_samples, bounds=parameter_bounds)
         elif density_est_method == "ensemble-flow":
@@ -852,7 +837,7 @@ class JointModelSelector:
         self,
         posterior_files: Sequence[str],
         event_types: Sequence[str],
-        density_est_method: Literal["kde", "bayes-flow", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
         flow_files: Sequence[str] | None = None,
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
     ):
@@ -884,13 +869,10 @@ class JointModelSelector:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "bayes-flow" : Bayesian normalizing flow PyTorch/Zuko model, pre-trained on event data and wrapped with gwxtreme.density_estimation.BayesianNormalizingFlow. If chosen, ``flow_files`` must also be passed.
             - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
         flow_files
-            If ``density_est_method`` is "bayes-flow", provide a list of paths (1 per event) to .pt files containing the weights and configurations for PyTorch/Zuko-based Bayesian Normalizing Flow models.
-            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .pt files (1 per model).
-            In either case, the .pt model files should correspond to models trained on the (transformed) posterior sample data for the given events, with the model parameterization matching that required based on ``event_types``.
+            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         integration_bounds
             Bounds for the EOS evidence integral.
@@ -906,10 +888,10 @@ class JointModelSelector:
 
         if density_est_method != "kde":
             assert flow_files is not None, (
-                "If using 'bayes-flow' or 'ensemble-flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
+                "If using 'ensemble-flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
             )
             assert len(posterior_files) == len(flow_files), (
-                "Number of posterior_files should match the number of given flow_files when 'bayes-flow' or 'ensemble-flow' are chosen for density_est_method"
+                "Number of posterior_files should match the number of given flow_files when 'ensemble-flow' is chosen for density_est_method"
             )
         else:
             flow_files = [None] * len(posterior_files)  # type: ignore
@@ -1244,7 +1226,7 @@ class ParameterizedEoSSampler:
         event_types: Sequence[str],
         eos_prior_bounds: Sequence[tuple],
         largest_observed_ns_mass: float = 1.97,
-        density_est_method: Literal["kde", "bayes-flow", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
         flow_files: Sequence[str] | None = None,
         parameterization: Literal["spectral", "polytrope"] = "spectral",
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
@@ -1285,13 +1267,10 @@ class ParameterizedEoSSampler:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "bayes-flow" : Bayesian normalizing flow PyTorch/Zuko model, pre-trained on event data and wrapped with gwxtreme.density_estimation.BayesianNormalizingFlow. If chosen, ``flow_files`` must also be passed.
             - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
         flow_files
-            If ``density_est_method`` is "bayes-flow", provide a list of paths (1 per event) to .pt files containing the weights and configurations for PyTorch/Zuko-based Bayesian Normalizing Flow models.
-            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .pt files (1 per model).
-            In either case, the .pt model files should correspond to models trained on the (transformed) posterior sample data for the given events, with the model parameterization matching that required based on ``event_types``.
+            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         parameterization
             Must be one of "spectral" (4-parameter spectral decomposition model) or "polytrope" (4-parameter piecewise-polytrope model)
