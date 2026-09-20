@@ -275,7 +275,7 @@ def plot_parameterized_eos_constraints(
         axes.plot(log10_density, logp_max, color="black", linestyle="dotted", label="prior extrema", lw=1.3)
 
     ylim = axes.get_ylim()
-    axes.fill_betweenx(ylim, 17.905258286370866, 18.051086814873575, color="gray", alpha=0.25)
+    # axes.fill_betweenx(ylim, 17.905258286370866, 18.051086814873575, color="gray", alpha=0.25)
     axes.set_ylim(ylim)
     axes.set_xlim(left=np.min(log10_density), right=np.max(log10_density))
     axes.set_xlabel(r"$\log_{10}(\frac{\rho}{\mathrm{g \, cm^{-3}}})$", fontsize=17)

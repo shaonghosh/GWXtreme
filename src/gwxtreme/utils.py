@@ -190,7 +190,7 @@ def get_nicer_pulsar_pe_posterior_samples(posterior_file: str) -> np.ndarray:
     """
 
     if posterior_file[-4:] == ".txt":
-        samples = np.loadtxt(posterior_file)
+        samples = np.loadtxt(posterior_file, dtype=np.float32)
 
         # Convert compactness to radius in km
         mass_in_sm, compactness = samples[:, 0], samples[:, 1]

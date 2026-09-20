@@ -52,18 +52,13 @@ import emcee
 import numpy as np
 import ray
 
-from gwxtreme.density_estimation import BoundedKDE
-from gwxtreme.utils import _get_mchirp_range, _get_q_range
-
-try:
-    from gwxtreme.flow_density_estimation import EnsembleNormalizingFlow
-except ImportError:
-    EnsembleNormalizingFlow = None  # type: ignore
-
+from gwxtreme.density_estimation import BoundedKDE, EnsembleNormalizingFlow
 from gwxtreme.eos_interpolator import EOSInterpolator, convert_masses
 from gwxtreme.eos_prior import is_valid_eos
 from gwxtreme.utils import (
+    _get_mchirp_range,
     _get_mean_mchirp_for_cbc_event,
+    _get_q_range,
     get_gw_event_pe_posterior_samples,
     get_nicer_pulsar_pe_posterior_samples,
 )
@@ -122,7 +117,7 @@ class ModelSelector:
         self,
         posterior_file: str,
         event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"],
-        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "flow"] = "kde",
         flow_file: str | None = None,
         integration_bounds: tuple[float, float] | Sequence[tuple[float, float]] | None = None,
     ):
@@ -153,10 +148,10 @@ class ModelSelector:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-file`` must be passed.
+            - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-file`` must be passed.
 
         flow_file
-            If ``density_est_method`` is "ensemble-flow", provide a path to a directory containing the ensemble of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
+            If ``density_est_method`` is "flow", provide a path to a directory containing the ensemble of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         integration_bounds
             Bounds for the EOS evidence integral.
@@ -171,7 +166,7 @@ class ModelSelector:
         """
 
         assert event_type in ["gw-2d", "gw-3d", "gw-4d", "psr"]
-        assert density_est_method in ["kde", "ensemble-flow"]
+        assert density_est_method in ["kde", "flow"]
 
         logger.info(
             f"Creating ModelSelector with\nevent_type={event_type}\ndensity_est_method={density_est_method}\nflow_file={flow_file}\nposterior_file={posterior_file}"
@@ -241,20 +236,13 @@ class ModelSelector:
         logger.info(f"Posterior samples shape = {posterior_samples.shape}")
         logger.info(f"Posterior density estimation bounds = {parameter_bounds}")
 
-        # Check if flow features are available in this version of the package. If not, code will terminate here with error.
-        if density_est_method == "ensemble-flow" and EnsembleNormalizingFlow is None:
-            raise NotImplementedError(
-                "'ensemble-flow' density estimation method is not implemented in this version of GWXtreme. \
-                    Please use the available KDE implementation by specifying density_est_method='kde' (the default value)."
-            )
-
-        elif density_est_method == "kde":
+        if density_est_method == "kde":
             self.density_estimator = BoundedKDE(posterior_samples=posterior_samples, bounds=parameter_bounds)
-        elif density_est_method == "ensemble-flow":
+        elif density_est_method == "flow":
             assert flow_file is not None, (
-                "To use 'ensemble-flow' density estimator, must provide a path to the directory of flow files via the ``flow_file`` argument"
+                "To use 'flow' density estimator, must provide a path to the directory of flow files via the ``flow_file`` argument"
             )
-            self.density_estimator = EnsembleNormalizingFlow(posterior_samples=posterior_samples, bounds=parameter_bounds, flows_dir=flow_file)
+            self.density_estimator = EnsembleNormalizingFlow(bounds=parameter_bounds, flows_dir=flow_file)
 
     def compute_eos_evidence_ratio(
         self,
@@ -324,7 +312,7 @@ class ModelSelector:
             Number of Bayes factor re-computations to perform by resampling the density estimator
             and re-integrating the probability density along the EOS line. These re-computed Bayes
             factor values are returned in an array along with the original Bayes factor. Default: 0
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used; the
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
             number of re-computed Bayes factors will be equal to the number of models provided in the ensemble.
 
         n_jobs
@@ -338,7 +326,7 @@ class ModelSelector:
                 - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine
                 - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
 
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
 
         ray_address
             Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
@@ -466,7 +454,7 @@ class ModelSelector:
             Number of evidence re-computations to perform by resampling the density estimator
             and re-integrating the probability density along the EOS line. These re-computed evidence
             values are returned in an array along with the original value. Default: 0
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used; the
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
             number of re-computed evidences will be equal to the number of models provided in the ensemble.
 
         n_jobs
@@ -480,7 +468,7 @@ class ModelSelector:
                 - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine
                 - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
 
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
 
         ray_address
             Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
@@ -537,7 +525,7 @@ class ModelSelector:
 
         # Need to average the array of evidences corresponding to the
         # ensemble of models, if applicable.
-        if self.density_est_method == "ensemble-flow":
+        if self.density_est_method == "flow":
             return np.mean(evidence).item()
 
         return evidence.item()
@@ -625,6 +613,7 @@ class ModelSelector:
 
         elif self.event_type == "psr":
             mass = np.linspace(self.m_min, self.m_max, n_grid)
+            mass = eos_interpolator.apply_ns_mass_constraint(mass)
 
             radius = eos_interpolator.get_radius(mass)
             points = np.stack((mass, radius), axis=-1)
@@ -643,7 +632,7 @@ class ModelSelector:
         n_resamplings
             Number of evidence recomputations to perform by resampling
             the posterior density estimator, by default 0.
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used; the
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
             number of re-computed evidences will be equal to the number of models provided in the ensemble.
 
         n_jobs
@@ -658,7 +647,7 @@ class ModelSelector:
                 - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
                 - Any other given value will fall back to the default option
 
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
 
         ray_address
             Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
@@ -671,7 +660,7 @@ class ModelSelector:
         """
 
         original_evidence = self._integrate_eos_path(points)
-        if n_resamplings > 0 and self.density_est_method != "ensemble-flow":
+        if n_resamplings > 0 and self.density_est_method != "flow":
             logger.info(f"Re-computing evidence over {n_resamplings} re-samplings of the density estimator")
 
             evidences = np.empty(n_resamplings + 1)
@@ -764,7 +753,7 @@ class ModelSelector:
             Single-element array containing the evidence value
         """
 
-        if self.density_est_method != "ensemble-flow":
+        if self.density_est_method != "flow":
             if self.event_type == "gw-4d":
                 q_arr = points[0, :, 0]
                 mchirp_arr = points[:, 0, 1]
@@ -837,7 +826,7 @@ class JointModelSelector:
         self,
         posterior_files: Sequence[str],
         event_types: Sequence[str],
-        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "flow"] = "kde",
         flow_files: Sequence[str] | None = None,
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
     ):
@@ -869,10 +858,10 @@ class JointModelSelector:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
+            - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
         flow_files
-            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
+            If ``density_est_method`` is "flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         integration_bounds
             Bounds for the EOS evidence integral.
@@ -888,10 +877,10 @@ class JointModelSelector:
 
         if density_est_method != "kde":
             assert flow_files is not None, (
-                "If using 'ensemble-flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
+                "If using 'flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
             )
             assert len(posterior_files) == len(flow_files), (
-                "Number of posterior_files should match the number of given flow_files when 'ensemble-flow' is chosen for density_est_method"
+                "Number of posterior_files should match the number of given flow_files when 'flow' is chosen for density_est_method"
             )
         else:
             flow_files = [None] * len(posterior_files)  # type: ignore
@@ -988,7 +977,7 @@ class JointModelSelector:
             Number of Bayes factor re-computations to perform by resampling the density estimator
             and re-integrating the probability density along the EOS line. These re-computed Bayes
             factor values are returned in an array along with the original Bayes factor. Default: 0.
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used; the
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
             number of re-computed Bayes factors will be equal to the number of models provided in the ensemble.
 
         n_jobs
@@ -1003,7 +992,7 @@ class JointModelSelector:
                 - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
                 - Any other given value will fall back to the default option
 
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
 
         ray_address
             Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
@@ -1138,7 +1127,7 @@ class JointModelSelector:
             Number of evidence re-computations to perform by resampling the density estimator
             and re-integrating the probability density along the EOS line. These re-computed evidence
             values are returned in an array along with the original value. Default: 0.
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used; the
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
             number of re-computed Bayes factors will be equal to the number of models provided in the ensemble.
 
         n_jobs
@@ -1153,7 +1142,7 @@ class JointModelSelector:
                 - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
                 - Any other given value will fall back to the default option
 
-            NOTE: This parameter has no effect when the "ensemble-flow" density estimation method is used.
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
 
         ray_address
             Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
@@ -1165,9 +1154,7 @@ class JointModelSelector:
             Tuple containing an array of values for the joint evidence with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...] and a list of evidence arrays (with the same size/structure) for each individual event
         """
 
-        joint_evidences = np.ones(n_resamplings + 1, dtype=np.float32)
         per_event_evidences = []
-
         for model_selector in self.model_selectors:
             evidences = model_selector._compute_eos_evidence(
                 eos_name=eos_name,
@@ -1179,8 +1166,8 @@ class JointModelSelector:
                 ray_address=ray_address,
             )
             per_event_evidences.append(evidences)
-            joint_evidences *= evidences
 
+        joint_evidences = np.prod(per_event_evidences, axis=0)
         return joint_evidences, per_event_evidences
 
     def compute_parameterized_eos_joint_evidence(self, parameters, parameterization: Literal["spectral", "polytrope"]) -> tuple[float, np.ndarray]:
@@ -1226,7 +1213,7 @@ class ParameterizedEoSSampler:
         event_types: Sequence[str],
         eos_prior_bounds: Sequence[tuple],
         largest_observed_ns_mass: float = 1.97,
-        density_est_method: Literal["kde", "ensemble-flow"] = "kde",
+        density_est_method: Literal["kde", "flow"] = "kde",
         flow_files: Sequence[str] | None = None,
         parameterization: Literal["spectral", "polytrope"] = "spectral",
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
@@ -1267,10 +1254,10 @@ class ParameterizedEoSSampler:
             EOS lines. Must be one of:
 
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "ensemble-flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
+            - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
         flow_files
-            If ``density_est_method`` is "ensemble-flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
+            If ``density_est_method`` is "flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         parameterization
             Must be one of "spectral" (4-parameter spectral decomposition model) or "polytrope" (4-parameter piecewise-polytrope model)

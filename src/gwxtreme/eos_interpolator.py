@@ -518,7 +518,7 @@ class EOSInterpolator:
 
     def apply_ns_mass_constraint(self, mass: np.ndarray) -> np.ndarray:
         """Return the sub-array of the given mass values that are
-        less than this EOS's minimum mass.
+        greater than this EOS's min mass and less than its max mass.
 
         Parameters
         ----------
@@ -527,7 +527,7 @@ class EOSInterpolator:
 
         Returns
         -------
-            Sub-array of valid masses after applying the EOS minimum mass constraint
+            Sub-array of valid masses after applying the EOS mass constraints
         """
 
         mass = mass[mass > self.min_mass]

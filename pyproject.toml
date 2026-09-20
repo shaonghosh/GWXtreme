@@ -26,6 +26,8 @@ dependencies = [
     "ray>=2.56.0",
     "onnxruntime>=1.28.0",
     "onnxscript>=0.7.1",
+    "torch>=2.14.0",
+    "zuko>=1.6.0",
 ]
 
 [project.optional-dependencies]

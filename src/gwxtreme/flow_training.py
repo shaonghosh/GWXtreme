@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import tqdm
 import zuko
-import optuna
 
 from gwxtreme.density_estimation import to_latent_space
 from gwxtreme.utils import get_gw_event_pe_posterior_samples, get_nicer_pulsar_pe_posterior_samples
@@ -74,6 +73,7 @@ def train_flow(
     batch_size: int = 256,
     max_norm: float = 20.0,
     early_stopping: int = 30,
+    density_plot_grid_size: int = 100,
 ) -> tuple[list[float], list[float]]:
     assert len(data.shape) == 2  # (N, n_dim)
     assert len(data) >= batch_size, f"need at least {batch_size} samples, got {len(data)}"
@@ -222,6 +222,7 @@ def train_flow(
     density, grids = evaluate_over_grid(
         f=wrap_call,
         grid_bounds=[(torch.min(data[:, i]).item(), torch.max(data[:, i]).item()) for i in range(data.shape[-1])],
+        grid_size=density_plot_grid_size,
         ##
     )
 
@@ -325,89 +326,3 @@ def density_corner_plot(
 
     fig.tight_layout()
     return fig, axes
-default_optuna_param_space = {
-    "lr": {"low": 1e-5, "high": 1e-4},
-    "beta1": {"low": 0.80, "high": 0.999},
-    "beta2": {"low": 0.90, "high": 0.9999},
-    "transforms": {"low": 3, "high": 8},
-}
-
-def sample_optimizer_kwargs(trial, base_kwargs, param_space):
-    """Build a trial-specific optimizer_kwargs dict for Optuna from base_kwargs,
-    overriding only the entries present in param_space."""
-    kwargs = dict(base_kwargs)
-    if "lr" in param_space:
-        s = param_space["lr"]
-        kwargs["lr"] = trial.suggest_float("lr", s["low"], s["high"])
-    if "beta1" in param_space or "beta2" in param_space:
-        b1_default, b2_default = base_kwargs.get("betas", (0.9, 0.999))
-        s1 = param_space.get("beta1")
-        s2 = param_space.get("beta2")
-        beta1 = trial.suggest_float("beta1", s1["low"], s1["high"]) #if s1 else b1_default
-        beta2 = trial.suggest_float("beta2", s2["low"], s2["high"]) #if s2 else b2_default
-        kwargs["betas"] = (beta1, beta2)
-    # if "transforms" in param_space:
-    #     n = param_space["transforms"]
-    #     kwargs["transforms"] = trial.suggest_int("transforms", n["low"],n["high")
-    return kwargs
-
-def sample_flow_kwargs(trial, base_kwargs, param_space):
-    kwargs = dict(base_kwargs)
-    if "transforms" in param_space:
-        s = param_space["transforms"]
-        kwargs["transforms"] = trial.suggest_int("transforms", s["low"], s["high"])
-    return kwargs
-    
-def train_flow_optuna(
-    zuko_flow_class,
-    optimizer_class,
-    data: torch.Tensor,
-    savedir: str,
-    flow_kwargs: dict | None = None,
-    optimizer_kwargs: dict | None = None,
-    filename_prefix: str = "",
-    n_epochs: int = 200,
-    batch_size: int = 256,
-    max_norm: float = 20.0,
-    early_stopping: int = 30,
-    param_space: dict | None = None,
-    n_trials: int = 5,
-    study_name: str | None = None,
-) -> tuple[list[float], list[float], optuna.Study]:
-    param_space = param_space or DEFAULT_OPTUNA_PARAM_SPACE
-    flow_kwargs = flow_kwargs or {"features": data.shape[-1]}   
-    optimizer_kwargs = optimizer_kwargs or {}
-    savedir_path = pathlib.Path(savedir)
-
-    def objective(trial):
-        trial_flow_kwargs = sample_flow_kwargs(trial, flow_kwargs, param_space)
-        trial_optimizer_kwargs = sample_optimizer_kwargs(trial, optimizer_kwargs, param_space)
-        trial_save_dir = savedir_path / f"trial_{trial.number}"
-        trial_filename_prefix = f"{filename_prefix}trial_{trial.number}_"
-
-        train_losses, val_losses = train_flow(
-            zuko_flow_class=zuko_flow_class,
-            flow_kwargs=trial_flow_kwargs,
-            optimizer_class=optimizer_class,
-            optimizer_kwargs=trial_optimizer_kwargs,
-            data=data,
-            savedir=str(trial_save_dir),
-            filename_prefix=trial_filename_prefix,
-            n_epochs=n_epochs,
-            batch_size=batch_size,
-            max_norm=max_norm,
-            early_stopping=early_stopping,
-        )
-        trial.set_user_attr("train_losses", train_losses)
-        trial.set_user_attr("val_losses", val_losses)
-        return min(val_losses)
-        
-    savedir_path.mkdir(parents=True, exist_ok=True)
-    study = optuna.create_study(direction="minimize", study_name=study_name,
-                                storage=f"sqlite:///{savedir_path / 'optuna_study.db'}", load_if_exists=True)
-    study.optimize(objective, n_trials=n_trials)
-
-    best_train_losses = study.best_trial.user_attrs["train_losses"]
-    best_val_losses = study.best_trial.user_attrs["val_losses"]
-
-    return best_train_losses, best_val_losses, study
