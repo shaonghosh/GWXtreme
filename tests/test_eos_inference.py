@@ -11,7 +11,7 @@ def test_model_selector(model_selector_instance: ModelSelector, tmp_path):
     """
 
     savepath = tmp_path / "model_selector_test_output.json"
-    result = model_selector_instance.compute_eos_evidence_ratio("APR4_EPP", "SLY", n_resamplings=10, save_file=str(savepath))
+    result = model_selector_instance.evidence_ratio("APR4_EPP", "SLY", n_resamplings=10, save_file=str(savepath))
     with open(savepath) as f:
         data = json.load(f)
 
@@ -22,7 +22,7 @@ def test_model_selector(model_selector_instance: ModelSelector, tmp_path):
 def test_sampler(sampler_instance: ParameterizedEoSSampler, tmp_path):
     """Tests that the ParameterizedEoSSampler can initialize and run MCMC
     for a few steps without failure. This also serves as a test of the
-    underlying JointModelSelector which the sampler initializes.
+    underlying ModelSelector which the sampler initializes.
     """
 
     savepath = tmp_path / "sampler_test_output.hdf5"
@@ -45,7 +45,7 @@ def test_model_selection_from_files(model_selector_instance: ModelSelector, eos_
     Slight differences in the evidences in this case are due to the usage of an
     interpolator over different sets of points from the EOS curve.
     """
-    result = model_selector_instance.compute_eos_evidence_ratio(
+    result = model_selector_instance.evidence_ratio(
         target_eos_name=eos_name,
         reference_eos_mass_lambda_file=eos_mass_lambda_file,
         reference_eos_mass_radius_k_file=eos_mass_radius_k_file,

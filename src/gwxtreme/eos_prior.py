@@ -167,7 +167,10 @@ def is_valid_eos(eos_params: np.ndarray | tuple | list, parameterization: Litera
     if parameterization == "spectral" and not _is_valid_adiabatic_index(eos_params):
         return False
 
-    eos = get_parameterized_eos(eos_params, parameterization)
+    try:
+        eos = get_parameterized_eos(eos_params, parameterization)
+    except RuntimeError:
+        return False
 
     # to avoid interpolation errors from LAL
     if not _has_enough_points(eos):

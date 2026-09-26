@@ -6,8 +6,8 @@ from gwxtreme.eos_inference import ModelSelector, ParameterizedEoSSampler
 @pytest.fixture
 def model_selector_instance():
     ms = ModelSelector(
-        posterior_file="./tests/GW170817_posterior_samples_IMRPhenomNRT_uniform_lambdas_prior.json",
-        event_type="gw-3d",
+        posterior_files=["./tests/GW170817_posterior_samples_IMRPhenomNRT_uniform_lambdas_prior.json"],
+        event_types=["gw-3d"],
         density_est_method="kde",
     )
     return ms

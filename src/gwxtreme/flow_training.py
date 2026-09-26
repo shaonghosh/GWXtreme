@@ -10,9 +10,6 @@ import torch
 import tqdm
 import zuko
 
-from gwxtreme.density_estimation import to_latent_space
-from gwxtreme.utils import get_gw_event_pe_posterior_samples, get_nicer_pulsar_pe_posterior_samples
-
 logger = logging.getLogger(__name__)
 
 

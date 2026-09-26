@@ -16,28 +16,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-"""Neutron star equation of state inference algorithms.
-
-This module implements the following classes:
-- ``ModelSelector``
-- ``JointModelSelector``
-- ``ParameterizedEoSSampler``
-
-``ModelSelector`` is used for single-event inference, and can be
-directly used to compute Bayes factors between EOS models.
-
-``JointModelSelector`` utilizes several ``ModelSelector`` s to
-perform joint inference across several events.
-
-``ParameterizedEoSSampler`` is used to infer the posterior
-distribution of the parameters of a parameterized EOS model,
-such as the 4-parameter spectral decomposition model, by
-running MCMC stochastic sampling. The likelihood function used
-for this sampling is the joint evidence for the proposed EOS,
-which comes from ``JointModelSelector.compute_joint_eos_evidence_ratio``.
-The parameterized inference can therefore be done across multiple
-events.
-"""
+"""Neutron star equation of state inference algorithms."""
 
 import atexit
 import json
@@ -49,19 +28,14 @@ from collections.abc import Sequence
 from typing import Literal
 
 import emcee
+import h5py
+import lal
 import numpy as np
 import ray
 
 from gwxtreme.density_estimation import BoundedKDE, EnsembleNormalizingFlow
 from gwxtreme.eos_interpolator import EOSInterpolator, convert_masses
 from gwxtreme.eos_prior import is_valid_eos
-from gwxtreme.utils import (
-    _get_mchirp_range,
-    _get_mean_mchirp_for_cbc_event,
-    _get_q_range,
-    get_gw_event_pe_posterior_samples,
-    get_nicer_pulsar_pe_posterior_samples,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +51,7 @@ def _shutdown_owned_ray():
 
 
 @ray.remote
-def _distributed_eos_evidence_integration(density_estimator: BoundedKDE, points: np.ndarray, event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"]):
+def _distributed_eos_evidence_integration(density_estimator: BoundedKDE, points: np.ndarray, event_type: str):
     if event_type == "gw-4d":
         q_arr = points[0, :, 0]
         mchirp_arr = points[:, 0, 1]
@@ -108,718 +82,8 @@ def _distributed_eos_evidence_integration(density_estimator: BoundedKDE, points:
 class ModelSelector:
     """Approximate Bayesian model selection of the neutron star equation of state.
 
-    This class is used for inference on single observed events with available parameter
-    estimation results. Events may be gravitational wave detections of binary neutron star
-    or neutron star-black hole mergers, or mass-radius measurements of pulsars.
-    """
-
-    def __init__(
-        self,
-        posterior_file: str,
-        event_type: Literal["gw-2d", "gw-3d", "gw-4d", "psr"],
-        density_est_method: Literal["kde", "flow"] = "kde",
-        flow_file: str | None = None,
-        integration_bounds: tuple[float, float] | Sequence[tuple[float, float]] | None = None,
-    ):
-        """
-        Parameters
-        ----------
-        posterior_file
-            Path to a .json, .h5/.hdf5, or .dat file containing posterior samples of the necessary
-            EOS-dependent parameters of the event.
-            The needed parameter samples depends on ``event_type``:
-
-            - "gw-2d" requires samples for mass ratio (q), chirp mass, and dominant tidal deformability (LambdaTilde)
-            - "gw-3d" and "gw-4d" require samples for mass ratio (q), chirp mass, and the two tidal deformabilities (Lambda1, Lambda2)
-            - "psr" requires samples for mass (in solar masses) and compactness
-
-        event_type
-            Type of the event/observation from which EOS inference is being conducted and the associated variant
-            of the approximation scheme to use. Must be one of:
-
-            - "gw-2d" : GW detection, 2 dimensional inference approximation scheme
-            - "gw-3d" : GW detection, 3 dimensional inference approximation scheme
-            - "gw-4d" : GW detection, 4 dimensional inference approximation scheme
-            - "psr" : Pulsar mass-radius measurement
-
-        density_est_method
-            Choice of the type of density estimator to use during the inference. The density estimator is used to
-            convert the data from the posterior file into a probability density function that can be integrated along
-            EOS lines. Must be one of:
-
-            - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
-            - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-file`` must be passed.
-
-        flow_file
-            If ``density_est_method`` is "flow", provide a path to a directory containing the ensemble of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
-
-        integration_bounds
-            Bounds for the EOS evidence integral.
-
-            These should correspond to:
-
-            - (q_min, q_max) for "gw-2d" and "gw-3d" events
-            - [(q_min, q_max), (mchirp_min, mchirp_max)] for "gw-4d" events
-            - (mass_min, mass_max) for "psr" events (with mass in solar masses)
-
-            If None, the bounds on the respective integration parameter(s) will be taken from the min and max of the posterior samples.
-        """
-
-        assert event_type in ["gw-2d", "gw-3d", "gw-4d", "psr"]
-        assert density_est_method in ["kde", "flow"]
-
-        logger.info(
-            f"Creating ModelSelector with\nevent_type={event_type}\ndensity_est_method={density_est_method}\nflow_file={flow_file}\nposterior_file={posterior_file}"
-        )
-
-        self.event_type = event_type
-        self.density_est_method = density_est_method
-
-        if self.event_type == "gw-2d":
-            self.mean_mchirp = _get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=2)
-
-            logger.info(f"Mean chirp mass from CBC posterior = {self.mean_mchirp}")
-
-            if integration_bounds is not None:
-                self.q_min, self.q_max = integration_bounds
-            else:
-                self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=2)
-
-            logger.info(f"q integration range = ({self.q_min}, {self.q_max})")
-
-            posterior_samples = get_gw_event_pe_posterior_samples(posterior_file, cbc_dim=2)
-            parameter_bounds = [(0.0, np.inf), (0.0, 1.0)]
-
-        elif self.event_type == "gw-3d":
-            self.mean_mchirp = _get_mean_mchirp_for_cbc_event(posterior_file, cbc_dim=3)
-
-            if integration_bounds is not None:
-                self.q_min, self.q_max = integration_bounds
-            else:
-                self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=3)
-
-            logger.info(f"q integration range = ({self.q_min}, {self.q_max})")
-
-            posterior_samples = get_gw_event_pe_posterior_samples(posterior_file, cbc_dim=3)
-            parameter_bounds = [(0.0, np.inf), (0.0, 1.0), (0.0, np.inf)]
-
-        elif self.event_type == "gw-4d":
-            posterior_samples = get_gw_event_pe_posterior_samples(posterior_file, cbc_dim=4)
-            parameter_bounds = [
-                (0.0, 1.0),
-                (0.0, np.inf),
-                (0.0, np.inf),
-                (0.0, np.inf),
-            ]
-
-            if integration_bounds is not None:
-                if not hasattr(integration_bounds[0], "__len__"):
-                    raise ValueError(
-                        f"For 'gw-4d' events, must provide integration bounds for both q and mchirp, such as [(0.3, 1.0), (1.1, 1.4)] - got {integration_bounds}"
-                    )
-                self.q_min, self.q_max = integration_bounds[0]  # type: ignore
-                self.mchirp_min, self.mchirp_max = integration_bounds[1]  # type: ignore
-            else:
-                self.q_min, self.q_max = _get_q_range(posterior_file, cbc_dim=4)
-                self.mchirp_min, self.mchirp_max = _get_mchirp_range(posterior_file, cbc_dim=4)
-
-        elif self.event_type == "psr":
-            posterior_samples = get_nicer_pulsar_pe_posterior_samples(posterior_file)
-            parameter_bounds = [(0.0, np.inf), (0.0, np.inf)]
-
-            if integration_bounds is not None:
-                self.m_min, self.m_max = integration_bounds
-            else:
-                self.m_min = np.min(posterior_samples[:, 0])
-                self.m_max = np.max(posterior_samples[:, 0])
-
-        logger.info(f"Posterior samples shape = {posterior_samples.shape}")
-        logger.info(f"Posterior density estimation bounds = {parameter_bounds}")
-
-        if density_est_method == "kde":
-            self.density_estimator = BoundedKDE(posterior_samples=posterior_samples, bounds=parameter_bounds)
-        elif density_est_method == "flow":
-            assert flow_file is not None, (
-                "To use 'flow' density estimator, must provide a path to the directory of flow files via the ``flow_file`` argument"
-            )
-            self.density_estimator = EnsembleNormalizingFlow(bounds=parameter_bounds, flows_dir=flow_file)
-
-    def compute_eos_evidence_ratio(
-        self,
-        target_eos_name: str | None = None,
-        reference_eos_name: str | None = None,
-        target_eos_mass_lambda_file: str | None = None,
-        reference_eos_mass_lambda_file: str | None = None,
-        target_eos_mass_radius_k_file: str | None = None,
-        reference_eos_mass_radius_k_file: str | None = None,
-        n_grid: int = 200,
-        n_resamplings: int = 0,
-        n_jobs: int = 1,
-        ray_address: str | None = None,
-        save_file: str | None = None,
-    ) -> np.ndarray:
-        """Compute evidence ratios (Bayes factors) between EOS models.
-
-        Bayes factors are computed as Target EOS Evidence / Reference EOS Evidence.
-
-        Supply the two EOS models either as LALSuite model names, mass-lambda files, or mass-radius-tidal Love number files.
-        The target and reference models may be supplied in different forms, but one ``target`` and one ``reference`` argument should be given.
-
-        Parameters
-        ----------
-        target_eos_name, reference_eos_name
-            Name of an EOS as implemented in LALSuite
-
-        target_eos_mass_lambda_file, reference_eos_mass_lambda_file
-            .txt file containing mass and dimensionless tidal deformability values
-
-            The data should be in the following format (without titles)::
-
-                (mass column)       (Lambda column)
-                min_mass            ...
-                ...                 ...
-                ...                 ...
-                max_mass            ...
-
-            The values of masses should be in units of solar masses. The
-            tidal deformability should be dimensionless.
-
-            Note: Supplying an EOS in this form is not sufficient for inferences
-            with 'psr'-type events, due to the inability to compute radii
-            from mass and tidal deformability alone.
-
-        target_eos_mass_radius_k_file, reference_eos_mass_radius_k_file
-            .txt file containing mass, radii, and tidal Love number values
-
-            The data should be in the following format (without titles)::
-
-                (mass column)       (radius column)     (kappa column)
-                min_mass            ...                 ...
-                ...                 ...                 ...
-                ...                 ...                 ...
-                max_mass            ...                 ...
-
-            The values of masses should be in units of solar masses. The radius should
-            be supplied in meters.
-
-        n_grid
-            Number of points to use when computing each evidence integral, by default 200.
-            Note: For 'gw-4d' events, the evidence integral is 2-dimensional over (q, mchirp), so the square
-            of the given number of points will be used. It is recommended to thus use a smaller
-            number of points if using the 4D method, to prevent intractable computational time.
-
-        n_resamplings
-            Number of Bayes factor re-computations to perform by resampling the density estimator
-            and re-integrating the probability density along the EOS line. These re-computed Bayes
-            factor values are returned in an array along with the original Bayes factor. Default: 0
-            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
-            number of re-computed Bayes factors will be equal to the number of models provided in the ensemble.
-
-        n_jobs
-            Determines whether to use Ray for multi-core parallel processing of evidence re-computations,
-            (the number of which are specified via the ``n_resamplings`` argument).
-            By default (n_jobs = 1), the computation will be serial. Changing this to use parallel
-            processing is only recommended for n_resamplings > 100.
-            Options:
-
-                - n_jobs = 1 (default): Serial execution; Ray not used.
-                - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine
-                - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
-
-            NOTE: This parameter has no effect when the "flow" density estimation method is used.
-
-        ray_address
-            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
-            any existing (already initialized) Ray cluster will be used, or one will be initialized
-            if none exists.
-
-        save_file
-            Optional path to a json file that will be created and used to store Bayes factor
-            results, with this schema:
-            {
-            "target_eos": ``target_eos_name`` (or file path if given),
-            "reference_eos": ``reference_eos_name`` (or file path if given),
-            "bayes_factors": [<original Bayes factor>, <n resampled Bayes factors>...]
-            }
-
-        Returns
-        -------
-            Array of Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
-        """
-
-        target_eos_evidences = self._compute_eos_evidence(
-            eos_name=target_eos_name,
-            eos_mass_lambda_file=target_eos_mass_lambda_file,
-            eos_mass_radius_k_file=target_eos_mass_radius_k_file,
-            n_grid=n_grid,
-            n_resamplings=n_resamplings,
-            n_jobs=n_jobs,
-            ray_address=ray_address,
-        )
-
-        reference_eos_evidences = self._compute_eos_evidence(
-            eos_name=reference_eos_name,
-            eos_mass_lambda_file=reference_eos_mass_lambda_file,
-            eos_mass_radius_k_file=reference_eos_mass_radius_k_file,
-            n_grid=n_grid,
-            n_resamplings=n_resamplings,
-            n_jobs=n_jobs,
-            ray_address=ray_address,
-        )
-
-        bayes_factors = target_eos_evidences / reference_eos_evidences
-
-        if save_file is not None:
-            logger.info(f"Saving Bayes factors to {save_file}")
-            results = {
-                "target_eos": next(
-                    (eos for eos in [target_eos_name, target_eos_mass_lambda_file, target_eos_mass_radius_k_file] if eos is not None), None
-                ),
-                "reference_eos": next(
-                    (eos for eos in [reference_eos_name, reference_eos_mass_lambda_file, reference_eos_mass_radius_k_file] if eos is not None), None
-                ),
-                "bayes_factors": bayes_factors.tolist(),
-            }
-            with open(save_file, "w") as f:
-                json.dump(results, f, indent=4)
-
-        return bayes_factors
-
-    def _compute_eos_evidence(
-        self,
-        eos_name: str | None = None,
-        eos_mass_lambda_file: str | None = None,
-        eos_mass_radius_k_file: str | None = None,
-        n_grid: int = 200,
-        n_resamplings: int = 0,
-        n_jobs: int = 1,
-        ray_address: str | None = None,
-    ) -> np.ndarray:
-        """Compute evidence for a single EOS.
-
-        Supply EOS model either as a LALSuite model name, mass-lambda file, or mass-radius-tidal Love number file.
-
-        Note that this evidence value is meaningless on its own because it is
-        not normalized; this function should only ever be used when taking the
-        evidence ratio (Bayes factor) between two different EOS models. ``ModelSelector.compute_eos_evidence_ratio``
-        can be used directly for this purpose. This function is available for
-        convenience and performance savings when computing Bayes factors between
-        many EOS models and a single reference model (e.g. to prevent unnecessary
-        repeated computations of the evidence for the reference model).
-
-        Parameters
-        ----------
-        eos_name
-            Name of an EOS as implemented in LALSuite
-
-        eos_mass_lambda_file
-            .txt file containing mass and dimensionless tidal deformability values
-
-            The data should be in the following format (without titles)::
-
-                (mass column)       (Lambda column)
-                min_mass            ...
-                ...                 ...
-                ...                 ...
-                max_mass            ...
-
-            The values of masses should be in units of solar masses. The
-            tidal deformability should be dimensionless.
-
-            Note: Supplying an EOS in this form is not sufficient for inferences
-            with 'psr'-type events, due to the inability to compute radii
-            from mass and tidal deformability alone.
-
-        eos_mass_radius_k_file
-            .txt file containing mass, radii, and tidal Love number values
-
-            The data should be in the following format (without titles)::
-
-                (mass column)       (radius column)     (kappa column)
-                min_mass            ...                 ...
-                ...                 ...                 ...
-                ...                 ...                 ...
-                max_mass            ...                 ...
-
-            The values of masses should be in units of solar masses. The radius should
-            be supplied in meters.
-
-        n_grid
-            Number of points to use when computing each evidence integral, by default 200.
-            Note: For 'gw-4d' events, the evidence integral is 2-dimensional over (q, mchirp), so the square
-            of the given number of points will be used. It is recommended to thus use a smaller
-            number of points if using the 4D method, to prevent intractable computational time.
-
-        n_resamplings
-            Number of evidence re-computations to perform by resampling the density estimator
-            and re-integrating the probability density along the EOS line. These re-computed evidence
-            values are returned in an array along with the original value. Default: 0
-            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
-            number of re-computed evidences will be equal to the number of models provided in the ensemble.
-
-        n_jobs
-            Determines whether to use Ray for multi-core parallel processing of evidence re-computations,
-            (the number of which are specified via the ``n_resamplings`` argument).
-            By default (n_jobs = 1), the computation will be serial. Changing this to use parallel
-            processing is only recommended for n_resamplings > 100.
-            Options:
-
-                - n_jobs = 1 (default): Serial execution; Ray not used.
-                - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine
-                - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
-
-            NOTE: This parameter has no effect when the "flow" density estimation method is used.
-
-        ray_address
-            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
-            any existing (already initialized) Ray cluster will be used, or one will be initialized
-            if none exists.
-
-        Returns
-        -------
-            Array of evidences with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...].
-        """
-
-        logger.info(
-            f"Computing evidence for EOS:\neos_name={eos_name}\neos_mass_lambda_file={eos_mass_lambda_file}\neos_mass_radius_k_file={eos_mass_radius_k_file}"
-        )
-
-        interpolator = EOSInterpolator(eos_name=eos_name, mass_lambda_file=eos_mass_lambda_file, mass_radius_k_file=eos_mass_radius_k_file)
-        eos_path = self._get_path_for_eos(interpolator, n_grid)
-
-        logger.info(f"EOS path has shape {eos_path.shape}")
-
-        eos_evidences = self._path_evidence(eos_path, n_resamplings, n_jobs, ray_address)
-
-        return eos_evidences
-
-    def compute_parameterized_eos_evidence(
-        self,
-        parameters: np.ndarray | tuple | list,
-        parameterization: Literal["spectral", "polytrope"],
-        n_grid: int = 200,
-    ) -> float:
-        """Compute the evidence for a parameterized EOS model.
-
-        Parameters
-        ----------
-        parameters
-            Array of values for parameters characterizing the EOS
-        parameterization
-            Must be one of "spectral" (4-parameter spectral
-            decomposition model) or "polytrope" (4-parameter
-            piecewise-polytrope model)
-
-        Returns
-        -------
-            Evidence of the EOS constructed from the given parameters and parameterization
-        """
-
-        interpolator = EOSInterpolator(
-            eos_parameters=np.array(parameters),
-            parameterization=parameterization,
-        )
-
-        path = self._get_path_for_eos(interpolator, n_grid=n_grid)
-        evidence = self._path_evidence(path)
-
-        # Need to average the array of evidences corresponding to the
-        # ensemble of models, if applicable.
-        if self.density_est_method == "flow":
-            return np.mean(evidence).item()
-
-        return evidence.item()
-
-    def _get_path_for_eos(
-        self,
-        eos_interpolator: EOSInterpolator,
-        n_grid: int = 200,
-    ) -> np.ndarray:
-        """Use the given EOS interpolator to compute points of the
-        line (or surface) that the EOS corresponds to in the event
-        parameter space.
-
-        The returned points are computed depending on the model
-        selector ``event_type`` as follows:
-
-        - "gw-2d" : A range of values for the NS component masses
-                    are computed from a range of the mass ratio q
-                    (from 0 to 1) and the event mean chirp mass.
-                    These masses are then used to compute the
-                    dominant tidal deformability (LambdaTilde).
-                    A line of points (q, LambdaTilde) is returned
-                    (with shape (n_grid, 2)).
-        - "gw-3d" : The component masses are computed as described
-                    above, and are then used to compute the tidal
-                    deformabilities (Lambda1 and Lambda2). A line
-                    of points (Lambda1, q, Lambda2) is returned (
-                    with shape (n_grid, 3)).
-        - "cbd-4d" : Component masses and tidal deformabilities are
-                    computed as described above. A surface of points
-                    (q, mchirp, Lambda1, Lambda2) is returned (with
-                    shape (n_grid, n_grid, 4)).
-        - "psr" : The EOS-predicted NS radius is computed for a
-                    uniform range of masses from 0.8 to 3.0
-                    solar masses. A line of points (mass, radius) is
-                    returned (with shape (n_grid, 2)).
-
-        Parameters
-        ----------
-        eos_interpolator
-            EOSInterpolator object encapsulating the EOS model which
-            will be used to interpolate tidal deformabilities (or
-            radii) from masses
-        n_grid
-           Number of points to return for the EOS line, by default 200.
-           (For "gw-4d" event type, the number of returned points will be n_grid^2.)
-
-        Returns
-        -------
-            Array of points with content and shape described above
-        """
-
-        if self.event_type == "gw-2d":
-            q = np.linspace(self.q_min, self.q_max, n_grid)
-            m1, m2 = convert_masses(q, self.mean_mchirp)
-            m1, m2, q = eos_interpolator.apply_bns_mass_constraint(m1, m2, q)  # type: ignore
-
-            lambdat = eos_interpolator.get_lambda_tilde(m1, m2)
-            points = np.stack((lambdat, q), axis=-1)
-
-        elif self.event_type == "gw-3d":
-            q = np.linspace(self.q_min, self.q_max, n_grid)
-            m1, m2 = convert_masses(q, self.mean_mchirp)
-            m1, m2, q = eos_interpolator.apply_bns_mass_constraint(m1, m2, q)  # type: ignore
-
-            lambda1 = eos_interpolator.get_lambda(m1)
-            lambda2 = eos_interpolator.get_lambda(m2)
-            points = np.stack((lambda1, q, lambda2), axis=-1)
-
-        elif self.event_type == "gw-4d":
-            q = np.linspace(self.q_min, self.q_max, n_grid)
-            mchirp = np.linspace(self.mchirp_min, self.mchirp_max, n_grid)
-
-            q_grid, mchirp_grid = np.meshgrid(q, mchirp)
-
-            # make same size 2D grid in m1, m2 in order to compute
-            # Lambda1 and Lambda2 grids
-            m1, m2 = convert_masses(q, mchirp)
-            m1_grid, m2_grid = np.meshgrid(m1, m2)
-
-            lambda1 = eos_interpolator.get_lambda(m1_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
-            lambda2 = eos_interpolator.get_lambda(m2_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
-
-            points = np.stack((q_grid, mchirp_grid, lambda1, lambda2), axis=-1)
-
-        elif self.event_type == "psr":
-            mass = np.linspace(self.m_min, self.m_max, n_grid)
-            mass = eos_interpolator.apply_ns_mass_constraint(mass)
-
-            radius = eos_interpolator.get_radius(mass)
-            points = np.stack((mass, radius), axis=-1)
-
-        return points
-
-    def _path_evidence(self, points: np.ndarray, n_resamplings: int = 0, n_jobs: int = 1, ray_address: str | None = None) -> np.ndarray:
-        """Compute the evidence(s) of the EOS line characterized by
-        ``points`` over the event posterior density.
-
-        Parameters
-        ----------
-        points
-            Array of points as returned by ``ModelSelector._get_path_for_eos``
-
-        n_resamplings
-            Number of evidence recomputations to perform by resampling
-            the posterior density estimator, by default 0.
-            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
-            number of re-computed evidences will be equal to the number of models provided in the ensemble.
-
-        n_jobs
-            Determines whether to use Ray for multi-core parallel processing of evidence re-computations,
-            (the number of which are specified via the ``n_resamplings`` argument).
-            By default (n_jobs = 1), the computation will be serial. Changing this to use parallel
-            processing is only recommended for n_resamplings > 100.
-            Options:
-
-                - n_jobs = 1 (default): Serial execution; Ray not used.
-                - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine, up to a maximum of 95% of the total available cores
-                - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
-                - Any other given value will fall back to the default option
-
-            NOTE: This parameter has no effect when the "flow" density estimation method is used.
-
-        ray_address
-            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
-            any existing (already initialized) Ray cluster will be used, or one will be initialized
-            if none exists.
-
-        Returns
-        -------
-            Array of evidences with size n_resamplings + 1
-        """
-
-        original_evidence = self._integrate_eos_path(points)
-        if n_resamplings > 0 and self.density_est_method != "flow":
-            logger.info(f"Re-computing evidence over {n_resamplings} re-samplings of the density estimator")
-
-            evidences = np.empty(n_resamplings + 1)
-            evidences[0] = original_evidence
-
-            # Serial execution (do not use Ray)
-            #   n_jobs < -1 is incorrect input
-            #   os.cpu_count() == None means cpu count is indeterminable
-            cpu_count = os.cpu_count()
-            if n_jobs == 1 or n_jobs == 0 or n_jobs < -1 or cpu_count is None:
-                logger.info("Using serial execution")
-
-                for i in range(1, n_resamplings + 1):
-                    evidences[i] = self._integrate_eos_path(points, resample=True)
-
-            # Parallel execution (use Ray)
-            else:
-                # Determine number of cores to use
-                max_cores = np.floor(0.95 * cpu_count)
-
-                if n_jobs == -1:
-                    n_cores = max_cores
-                else:
-                    n_cores = min(n_jobs, max_cores)
-
-                logger.info(f"Using parallel execution with {n_cores} cores")
-
-                # Spin up Ray with the specific cpu ceiling if not already running
-                if not ray.is_initialized():
-                    logger.info("Initializing Ray")
-
-                    if ray_address is not None:
-                        # Connecting to a user-specified existing cluster: resource
-                        # arguments can't be combined with `address`, and this process
-                        # must never manage the lifecycle of a cluster it didn't create.
-                        ray.init(address=ray_address, log_to_driver=False, logging_level=logging.WARNING)
-                    else:
-                        ctx = ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.WARNING)
-
-                        # Register shutdown procedure to kill Ray processes and remove the
-                        # session dir it creates in /tmp/ray. Only done when this call is
-                        # the one that started the cluster.
-                        global _owns_ray_session, _ray_session_dir
-                        _owns_ray_session = True
-                        _ray_session_dir = ctx.address_info["session_dir"]  # type: ignore[attr-defined]
-                        atexit.register(_shutdown_owned_ray)
-
-                else:
-                    logger.info("Available Ray cluster already exists; connecting to it")
-
-                # Put these (somewhat) large objects in shared memory
-                density_estimator_ref = ray.put(self.density_estimator)
-                points_ref = ray.put(points)
-
-                # Launch parallel tasks
-                logger.info(f"Dispatching {n_resamplings} EOS evidence integration tasks to Ray cluster")
-                results = []
-                for _ in range(n_resamplings):
-                    results.append(
-                        _distributed_eos_evidence_integration.options(enable_task_events=False).remote(
-                            density_estimator_ref, points_ref, self.event_type
-                        )
-                    )
-
-                evidences[1:] = ray.get(results)
-
-                logger.info("Ray tasks returned")
-
-            return evidences
-
-        else:
-            return original_evidence
-
-    def _integrate_eos_path(self, points: np.ndarray, resample: bool = False) -> np.ndarray:
-        """Compute the EOS evidence by integrating the EOS line
-        characterized by ``points`` over the event posterior density.
-
-        The integral is performed numerically using ``np.trapezoid``.
-
-        Parameters
-        ----------
-        points
-            Array of points as returned by ``ModelSelector._get_path_for_eos``
-        resample
-            Whether to resample the density estimator before
-            integrating, by default False
-
-        Returns
-        -------
-            Single-element array containing the evidence value
-        """
-
-        if self.density_est_method != "flow":
-            if self.event_type == "gw-4d":
-                q_arr = points[0, :, 0]
-                mchirp_arr = points[:, 0, 1]
-
-                n_grid = points.shape[0]
-                points = points.reshape(n_grid**2, 4)
-
-                density = self.density_estimator.pdf(points, resample)
-                density = density.reshape((n_grid, n_grid))
-
-                integral_over_mchirp = np.trapezoid(density, mchirp_arr, axis=0)
-                evidence = np.trapezoid(integral_over_mchirp, q_arr)
-
-            else:
-                density = self.density_estimator.pdf(points, resample)
-
-                # integrate over: ...
-                integrate_dim = {
-                    "gw-2d": 1,  # q
-                    "gw-3d": 1,  # q
-                    "psr": 0,  # m
-                }.get(self.event_type)
-                evidence = np.trapezoid(y=density, x=points[:, integrate_dim])
-
-            return evidence
-
-        else:
-            if self.event_type == "gw-4d":
-                q_arr = points[0, :, 0]
-                mchirp_arr = points[:, 0, 1]
-
-                n_grid = points.shape[0]
-                points = points.reshape(n_grid**2, 4)
-
-                ensemble_densities = self.density_estimator.pdf(points)
-
-                ensemble_evidences = []
-                for density in ensemble_densities:
-                    density = density.reshape((n_grid, n_grid))
-
-                    integral_over_mchirp = np.trapezoid(density, mchirp_arr, axis=0)
-                    ensemble_evidences.append(np.trapezoid(integral_over_mchirp, q_arr))
-
-            else:
-                ensemble_densities = self.density_estimator.pdf(points)
-
-                # integrate over: ...
-                integrate_dim = {
-                    "gw-2d": 1,  # q
-                    "gw-3d": 1,  # q
-                    "psr": 0,  # m
-                }.get(self.event_type)
-
-                ensemble_evidences = []
-                for density in ensemble_densities:
-                    ensemble_evidences.append(np.trapezoid(y=density, x=points[:, integrate_dim]))
-
-            return np.array(ensemble_evidences)
-
-
-class JointModelSelector:
-    """Joint model selection of the neutron star equation-of-state.
-
-    This class performs joint inference on several events by composing
-    several ``ModelSelector`` instances, one for each event. Joint evidences
-    are the product of the individual event evidences.
+    This class is used for inference on neutron star merger PE datasets or NICER pulsar
+    mass-radius samples.
     """
 
     def __init__(
@@ -827,7 +91,7 @@ class JointModelSelector:
         posterior_files: Sequence[str],
         event_types: Sequence[str],
         density_est_method: Literal["kde", "flow"] = "kde",
-        flow_files: Sequence[str] | None = None,
+        flow_directories: Sequence[str | pathlib.Path] | None = None,
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
     ):
         """
@@ -860,8 +124,8 @@ class JointModelSelector:
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
             - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
-        flow_files
-            If ``density_est_method`` is "flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
+        flow_directories
+            If ``density_est_method`` is "flow", provide a list of paths (1 per event) to directories containing the ensembles of Normalizing Flow models in the form of .onnx files (1 per model).
 
         integration_bounds
             Bounds for the EOS evidence integral.
@@ -875,39 +139,85 @@ class JointModelSelector:
             If None, the bounds on the respective integration parameter(s) will be taken from the min and max of the posterior samples.
         """
 
-        if density_est_method != "kde":
-            assert flow_files is not None, (
-                "If using 'flow' density_est_method, must pass a set of model files or ensemble directory paths; see class __init__ docs"
-            )
-            assert len(posterior_files) == len(flow_files), (
-                "Number of posterior_files should match the number of given flow_files when 'flow' is chosen for density_est_method"
-            )
-        else:
-            flow_files = [None] * len(posterior_files)  # type: ignore
+        data_space_bounds = {
+            "gw-2d": [(0.0, np.inf), (0.0, 1.0)],
+            "gw-3d": [(0.0, np.inf), (0.0, 1.0), (0.0, np.inf)],
+            "gw-4d": [
+                (0.0, 1.0),
+                (0.0, np.inf),
+                (0.0, np.inf),
+                (0.0, np.inf),
+            ],
+            "psr": [(0.0, np.inf), (0.0, np.inf)],
+        }
 
-        if integration_bounds is not None:
-            assert len(integration_bounds) == len(posterior_files), "Number of given integration bounds should match the number of events"
-        else:
-            integration_bounds = [None] * len(posterior_files)  # type: ignore
+        self.density_estimators = []
+        self.integration_bounds = []
+        self.mean_mchirps = []
+        self.event_types = event_types
+
+        for i in range(len(posterior_files)):
+            posterior_samples = get_posterior_samples(posterior_files[i], event_types[i])
+
+            if event_types[i] == "gw-2d" or event_types[i] == "gw-3d":
+                if event_types[i] == "gw-2d":
+                    samples_array = np.stack((posterior_samples["lambdat"], posterior_samples["q"]), axis=-1, dtype=np.float32)
+                else:
+                    samples_array = np.stack(
+                        (posterior_samples["lambda1"], posterior_samples["q"], posterior_samples["lambda2"]), axis=-1, dtype=np.float32
+                    )
+
+                self.mean_mchirps.append(np.mean(posterior_samples["mchirp"]))
+
+                if integration_bounds is not None:
+                    self.integration_bounds.append(integration_bounds)
+                else:
+                    self.integration_bounds.append((np.min(posterior_samples["q"]), np.max(posterior_samples["q"])))
+
+            elif event_types[i] == "gw-4d":
+                samples_array = np.stack(
+                    (posterior_samples["q"], posterior_samples["mchirp"], posterior_samples["lambda1"], posterior_samples["lambda2"]),
+                    axis=-1,
+                    dtype=np.float32,
+                )
+
+                self.mean_mchirps.append(None)
+
+                if integration_bounds is not None:
+                    if not hasattr(integration_bounds[0], "__len__"):
+                        raise ValueError(
+                            f"For 'gw-4d' events, must provide integration bounds for both q and mchirp, such as [(0.3, 1.0), (1.1, 1.4)] - got {integration_bounds}"
+                        )
+                    self.integration_bounds.append(integration_bounds)
+                else:
+                    self.integration_bounds.append(
+                        (
+                            (np.min(posterior_samples["q"]), np.max(posterior_samples["q"])),
+                            (np.min(posterior_samples["mchirp"]), np.max(posterior_samples["mchirp"])),
+                        )
+                    )
+
+            elif event_types[i] == "psr":
+                samples_array = np.stack((posterior_samples["mass"], posterior_samples["radius"]), axis=-1, dtype=np.float32)
+
+                self.mean_mchirps.append(None)
+
+                if integration_bounds is not None:
+                    self.integration_bounds.append(integration_bounds)
+                else:
+                    self.integration_bounds.append((np.min(posterior_samples["mass"]), np.max(posterior_samples["mass"])))
+
+            if density_est_method == "kde":
+                self.density_estimators.append(BoundedKDE(posterior_samples=samples_array, bounds=data_space_bounds[event_types[i]]))
+            elif density_est_method == "flow":
+                self.density_estimators.append(EnsembleNormalizingFlow(flows_dir=str(flow_directories[i]), bounds=data_space_bounds[event_types[i]]))
 
         # For the parameterized EOS evidence calculation (used by the sampler class), define the number
         # of grid points to use: 100 points for all event types except the 4D method, which uses a 2-dimensional
         # surface integral, so 200 * 200 points will be used (40,000 KDE evaluations)
         self.parameterized_evidence_integral_n_grids = [200 if et == "gw-4d" else 100 for et in event_types]
 
-        self.model_selectors = []
-        for post_file, event_type, flow_file, int_bounds in zip(posterior_files, event_types, flow_files, integration_bounds):
-            self.model_selectors.append(
-                ModelSelector(
-                    posterior_file=post_file,
-                    event_type=event_type,
-                    density_est_method=density_est_method,
-                    flow_file=flow_file,
-                    integration_bounds=int_bounds,
-                )
-            )
-
-    def compute_joint_eos_evidence_ratio(
+    def evidence_ratio(
         self,
         target_eos_name: str | None = None,
         reference_eos_name: str | None = None,
@@ -915,13 +225,13 @@ class JointModelSelector:
         reference_eos_mass_lambda_file: str | None = None,
         target_eos_mass_radius_k_file: str | None = None,
         reference_eos_mass_radius_k_file: str | None = None,
-        n_grid: int = 200,
+        n_grid: int = 100,
         n_resamplings: int = 0,
         n_jobs: int = 1,
         ray_address: str | None = None,
         save_file: str | None = None,
     ) -> np.ndarray:
-        """Compute joint evidence ratios (Bayes factors) between EOS models.
+        """Compute evidence ratios (Bayes factors) between EOS models.
 
         Bayes factors are computed as Target EOS Evidence / Reference EOS Evidence.
         Joint bayes factors are obtained by multiplying the Bayes factors computed
@@ -1005,16 +315,16 @@ class JointModelSelector:
             {
             "target_eos": ``target_eos_name`` (or file path if provided),
             "reference_eos": ``reference_eos_name`` (or file path if provided),
-            "bayes_factors": [<original joint Bayes factor>, <resampled joint Bayes factors>...],
+            "bayes_factors": [<original Bayes factor>, <resampled Bayes factors>...],
             "per_event_bayes_factors": [ [Bayes factors for event 1], [Bayes factors for event 2], ...]
             }
 
         Returns
         -------
-            Array of joint Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
+            Array of Bayes factors (target EOS evidences / reference EOS evidences) with size ``n_resamplings`` + 1, structured like [<original Bayes factor>, <n resampled Bayes factors>...].
         """
 
-        _, target_eos_per_event_evidences = self._compute_joint_eos_evidence(
+        _, target_eos_per_event_evidences = self._joint_evidence(
             eos_name=target_eos_name,
             eos_mass_lambda_file=target_eos_mass_lambda_file,
             eos_mass_radius_k_file=target_eos_mass_radius_k_file,
@@ -1024,7 +334,7 @@ class JointModelSelector:
             ray_address=ray_address,
         )
 
-        _, reference_eos_per_event_evidences = self._compute_joint_eos_evidence(
+        _, reference_eos_per_event_evidences = self._joint_evidence(
             eos_name=reference_eos_name,
             eos_mass_lambda_file=reference_eos_mass_lambda_file,
             eos_mass_radius_k_file=reference_eos_mass_radius_k_file,
@@ -1041,7 +351,7 @@ class JointModelSelector:
         joint_bayes_factors = np.prod(np.array(per_event_bayes_factors), axis=0)
 
         if save_file is not None:
-            logger.info(f"Saving joint Bayes factors to {save_file}")
+            logger.info(f"Saving Bayes factors to {save_file}")
             results = {
                 "target_eos": next(
                     (eos for eos in [target_eos_name, target_eos_mass_lambda_file, target_eos_mass_radius_k_file] if eos is not None), None
@@ -1058,7 +368,7 @@ class JointModelSelector:
 
         return joint_bayes_factors
 
-    def _compute_joint_eos_evidence(
+    def _joint_evidence(
         self,
         eos_name: str | None = None,
         eos_mass_lambda_file: str | None = None,
@@ -1074,7 +384,7 @@ class JointModelSelector:
 
         Note that this evidence value is meaningless on its own because it is
         not normalized; this function should only ever be used when taking the
-        evidence ratio (Bayes factor) between two different EOS models. ``JointModelSelector.compute_joint_eos_evidence_ratio``
+        evidence ratio (Bayes factor) between two different EOS models. ``ModelSelector.evidence_ratio``
         can be used directly for this purpose. This function is available for
         convenience and performance savings when computing Bayes factors between
         many EOS models and a single reference model (e.g. to prevent unnecessary
@@ -1154,12 +464,19 @@ class JointModelSelector:
             Tuple containing an array of values for the joint evidence with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...] and a list of evidence arrays (with the same size/structure) for each individual event
         """
 
+        interpolator = EOSInterpolator(
+            eos_name=eos_name,
+            mass_lambda_file=eos_mass_lambda_file,
+            mass_radius_k_file=eos_mass_radius_k_file,
+        )
         per_event_evidences = []
-        for model_selector in self.model_selectors:
-            evidences = model_selector._compute_eos_evidence(
-                eos_name=eos_name,
-                eos_mass_lambda_file=eos_mass_lambda_file,
-                eos_mass_radius_k_file=eos_mass_radius_k_file,
+        for i in range(len(self.density_estimators)):
+            evidences = self._single_event_evidence(
+                interpolator,
+                self.density_estimators[i],
+                self.event_types[i],
+                self.integration_bounds[i],
+                self.mean_mchirps[i],
                 n_grid=n_grid,
                 n_resamplings=n_resamplings,
                 n_jobs=n_jobs,
@@ -1170,7 +487,318 @@ class JointModelSelector:
         joint_evidences = np.prod(per_event_evidences, axis=0)
         return joint_evidences, per_event_evidences
 
-    def compute_parameterized_eos_joint_evidence(self, parameters, parameterization: Literal["spectral", "polytrope"]) -> tuple[float, np.ndarray]:
+    def _single_event_evidence(
+        self,
+        interpolator: EOSInterpolator,
+        density_estimator: BoundedKDE | EnsembleNormalizingFlow,
+        event_type: str,
+        integration_bounds,
+        mean_mchirp: float | None,
+        n_grid: int = 100,
+        n_resamplings: int = 0,
+        n_jobs: int = 1,
+        ray_address: str | None = None,
+    ):
+        """Compute evidence for a single EOS.
+
+        Supply EOS model either as a LALSuite model name, mass-lambda file, or mass-radius-tidal Love number file.
+
+        Note that this evidence value is meaningless on its own because it is
+        not normalized; this function should only ever be used when taking the
+        evidence ratio (Bayes factor) between two different EOS models. ``ModelSelector.compute_eos_evidence_ratio``
+        can be used directly for this purpose. This function is available for
+        convenience and performance savings when computing Bayes factors between
+        many EOS models and a single reference model (e.g. to prevent unnecessary
+        repeated computations of the evidence for the reference model).
+
+        Parameters
+        ----------
+        n_grid
+            Number of points to use when computing each evidence integral, by default 200.
+            Note: For 'gw-4d' events, the evidence integral is 2-dimensional over (q, mchirp), so the square
+            of the given number of points will be used. It is recommended to thus use a smaller
+            number of points if using the 4D method, to prevent intractable computational time.
+
+        n_resamplings
+            Number of evidence re-computations to perform by resampling the density estimator
+            and re-integrating the probability density along the EOS line. These re-computed evidence
+            values are returned in an array along with the original value. Default: 0
+            NOTE: This parameter has no effect when the "flow" density estimation method is used; the
+            number of re-computed evidences will be equal to the number of models provided in the ensemble.
+
+        n_jobs
+            Determines whether to use Ray for multi-core parallel processing of evidence re-computations,
+            (the number of which are specified via the ``n_resamplings`` argument).
+            By default (n_jobs = 1), the computation will be serial. Changing this to use parallel
+            processing is only recommended for n_resamplings > 100.
+            Options:
+
+                - n_jobs = 1 (default): Serial execution; Ray not used.
+                - n_jobs > 1 : Ray will be allocated the given number of CPU cores on the machine
+                - n_jobs = -1 : Ray will be allocated 95% of the available CPU cores on the machine
+
+            NOTE: This parameter has no effect when the "flow" density estimation method is used.
+
+        ray_address
+            Address of Ray cluster to use for parallel processing when ``n_jobs`` is set. By default,
+            any existing (already initialized) Ray cluster will be used, or one will be initialized
+            if none exists.
+
+        Returns
+        -------
+            Array of evidences with size ``n_resamplings`` + 1, structured like [<original evidence>, <n resampled evidences>...].
+        """
+
+        points = self._create_eos_contour(interpolator, event_type, integration_bounds, mean_mchirp, n_grid)
+
+        original_evidence = self._integrate_eos_contour(points, density_estimator, event_type)
+        if n_resamplings > 0 and isinstance(density_estimator, BoundedKDE):
+            logger.info(f"Re-computing evidence over {n_resamplings} re-samplings of the density estimator")
+
+            evidences = np.empty(n_resamplings + 1)
+            evidences[0] = original_evidence
+
+            # Serial execution (do not use Ray)
+            #   n_jobs < -1 is incorrect input
+            #   os.cpu_count() == None means cpu count is indeterminable
+            cpu_count = os.cpu_count()
+            if n_jobs == 1 or n_jobs == 0 or n_jobs < -1 or cpu_count is None:
+                logger.info("Using serial execution")
+
+                for i in range(1, n_resamplings + 1):
+                    evidences[i] = self._integrate_eos_contour(points, density_estimator, event_type, resample=True)
+
+            # Parallel execution (use Ray)
+            else:
+                # Determine number of cores to use
+                max_cores = np.floor(0.95 * cpu_count)
+
+                if n_jobs == -1:
+                    n_cores = max_cores
+                else:
+                    n_cores = min(n_jobs, max_cores)
+
+                logger.info(f"Using parallel execution with {n_cores} cores")
+
+                # Spin up Ray with the specific cpu ceiling if not already running
+                if not ray.is_initialized():
+                    logger.info("Initializing Ray")
+
+                    if ray_address is not None:
+                        # Connecting to a user-specified existing cluster: resource
+                        # arguments can't be combined with `address`, and this process
+                        # must never manage the lifecycle of a cluster it didn't create.
+                        ray.init(address=ray_address, log_to_driver=False, logging_level=logging.WARNING)
+                    else:
+                        ctx = ray.init(num_cpus=n_cores, log_to_driver=False, logging_level=logging.WARNING)
+
+                        # Register shutdown procedure to kill Ray processes and remove the
+                        # session dir it creates in /tmp/ray. Only done when this call is
+                        # the one that started the cluster.
+                        global _owns_ray_session, _ray_session_dir
+                        _owns_ray_session = True
+                        _ray_session_dir = ctx.address_info["session_dir"]  # type: ignore[attr-defined]
+                        atexit.register(_shutdown_owned_ray)
+
+                else:
+                    logger.info("Available Ray cluster already exists; connecting to it")
+
+                # Put these (somewhat) large objects in shared memory
+                density_estimator_ref = ray.put(density_estimator)
+                points_ref = ray.put(points)
+
+                # Launch parallel tasks
+                logger.info(f"Dispatching {n_resamplings} EOS evidence integration tasks to Ray cluster")
+                results = []
+                for _ in range(n_resamplings):
+                    results.append(
+                        _distributed_eos_evidence_integration.options(enable_task_events=False).remote(density_estimator_ref, points_ref, event_type)
+                    )
+
+                evidences[1:] = ray.get(results)
+
+                logger.info("Ray tasks returned")
+
+            return evidences
+
+        else:
+            return original_evidence
+
+    def _create_eos_contour(
+        self,
+        eos_interpolator: EOSInterpolator,
+        event_type: str,
+        integration_bounds,
+        mean_mchirp: float | None,
+        n_grid: int = 100,
+    ) -> np.ndarray:
+        """Use the given EOS interpolator to compute points of the
+        line (or surface) that the EOS corresponds to in the event
+        parameter space.
+
+        The returned points are computed depending on the model
+        selector ``event_type`` as follows:
+
+        - "gw-2d" : A range of values for the NS component masses
+                    are computed from a range of the mass ratio q
+                    (from 0 to 1) and the event mean chirp mass.
+                    These masses are then used to compute the
+                    dominant tidal deformability (LambdaTilde).
+                    A line of points (q, LambdaTilde) is returned
+                    (with shape (n_grid, 2)).
+        - "gw-3d" : The component masses are computed as described
+                    above, and are then used to compute the tidal
+                    deformabilities (Lambda1 and Lambda2). A line
+                    of points (Lambda1, q, Lambda2) is returned (
+                    with shape (n_grid, 3)).
+        - "cbd-4d" : Component masses and tidal deformabilities are
+                    computed as described above. A surface of points
+                    (q, mchirp, Lambda1, Lambda2) is returned (with
+                    shape (n_grid, n_grid, 4)).
+        - "psr" : The EOS-predicted NS radius is computed for a
+                    uniform range of masses from 0.8 to 3.0
+                    solar masses. A line of points (mass, radius) is
+                    returned (with shape (n_grid, 2)).
+
+        Parameters
+        ----------
+        eos_interpolator
+            EOSInterpolator object encapsulating the EOS model which
+            will be used to interpolate tidal deformabilities (or
+            radii) from masses
+        n_grid
+           Number of points to return for the EOS line, by default 200.
+           (For "gw-4d" event type, the number of returned points will be n_grid^2.)
+
+        Returns
+        -------
+            Array of points with content and shape described above
+        """
+
+        if event_type == "gw-2d":
+            q = np.linspace(integration_bounds[0], integration_bounds[1], n_grid)
+            m1, m2 = convert_masses(q, mean_mchirp)
+            m1, m2, q = eos_interpolator.apply_bns_mass_constraint(m1, m2, q)  # type: ignore
+
+            lambdat = eos_interpolator.get_lambda_tilde(m1, m2)
+            points = np.stack((lambdat, q), axis=-1)
+
+        elif event_type == "gw-3d":
+            q = np.linspace(integration_bounds[0], integration_bounds[1], n_grid)
+            m1, m2 = convert_masses(q, mean_mchirp)
+            m1, m2, q = eos_interpolator.apply_bns_mass_constraint(m1, m2, q)  # type: ignore
+
+            lambda1 = eos_interpolator.get_lambda(m1)
+            lambda2 = eos_interpolator.get_lambda(m2)
+            points = np.stack((lambda1, q, lambda2), axis=-1)
+
+        elif event_type == "gw-4d":
+            q = np.linspace(integration_bounds[0][0], integration_bounds[0][1], n_grid)
+            mchirp = np.linspace(integration_bounds[1][0], integration_bounds[1][1], n_grid)
+
+            q_grid, mchirp_grid = np.meshgrid(q, mchirp)
+
+            # make same size 2D grid in m1, m2 in order to compute
+            # Lambda1 and Lambda2 grids
+            m1, m2 = convert_masses(q, mchirp)
+            m1_grid, m2_grid = np.meshgrid(m1, m2)
+
+            lambda1 = eos_interpolator.get_lambda(m1_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
+            lambda2 = eos_interpolator.get_lambda(m2_grid.reshape(n_grid**2)).reshape((n_grid, n_grid))
+
+            points = np.stack((q_grid, mchirp_grid, lambda1, lambda2), axis=-1)
+
+        elif event_type == "psr":
+            mass = np.linspace(integration_bounds[0], integration_bounds[1], n_grid)
+            mass = eos_interpolator.apply_ns_mass_constraint(mass)
+
+            radius = eos_interpolator.get_radius(mass)
+            points = np.stack((mass, radius), axis=-1)
+
+        return points
+
+    def _integrate_eos_contour(
+        self, points: np.ndarray, density_estimator: BoundedKDE | EnsembleNormalizingFlow, event_type: str, resample: bool = False
+    ) -> np.ndarray:
+        """Compute the EOS evidence by integrating the EOS line
+        characterized by ``points`` over the event posterior density.
+
+        The integral is performed numerically using ``np.trapezoid``.
+
+        Parameters
+        ----------
+        points
+            Array of points as returned by ``ModelSelector._create_eos_contour``
+        resample
+            Whether to resample the density estimator before
+            integrating, by default False
+
+        Returns
+        -------
+            Single-element array containing the evidence value
+        """
+
+        if isinstance(density_estimator, BoundedKDE):
+            if event_type == "gw-4d":
+                q_arr = points[0, :, 0]
+                mchirp_arr = points[:, 0, 1]
+
+                n_grid = points.shape[0]
+                points = points.reshape(n_grid**2, 4)
+
+                density = density_estimator.pdf(points, resample)
+                density = density.reshape((n_grid, n_grid))
+
+                integral_over_mchirp = np.trapezoid(density, mchirp_arr, axis=0)
+                evidence = np.trapezoid(integral_over_mchirp, q_arr)
+
+            else:
+                density = density_estimator.pdf(points, resample)
+
+                # integrate over: ...
+                integrate_dim = {
+                    "gw-2d": 1,  # q
+                    "gw-3d": 1,  # q
+                    "psr": 0,  # m
+                }.get(event_type)
+                evidence = np.trapezoid(y=density, x=points[:, integrate_dim])
+
+            return evidence
+
+        else:
+            if event_type == "gw-4d":
+                q_arr = points[0, :, 0]
+                mchirp_arr = points[:, 0, 1]
+
+                n_grid = points.shape[0]
+                points = points.reshape(n_grid**2, 4)
+
+                ensemble_densities = density_estimator.pdf(points)
+
+                ensemble_evidences = []
+                for density in ensemble_densities:
+                    density = density.reshape((n_grid, n_grid))
+
+                    integral_over_mchirp = np.trapezoid(density, mchirp_arr, axis=0)
+                    ensemble_evidences.append(np.trapezoid(integral_over_mchirp, q_arr))
+
+            else:
+                ensemble_densities = density_estimator.pdf(points)
+
+                # integrate over: ...
+                integrate_dim = {
+                    "gw-2d": 1,  # q
+                    "gw-3d": 1,  # q
+                    "psr": 0,  # m
+                }.get(event_type)
+
+                ensemble_evidences = []
+                for density in ensemble_densities:
+                    ensemble_evidences.append(np.trapezoid(y=density, x=points[:, integrate_dim]))
+
+            return np.array(ensemble_evidences)
+
+    def parameterized_eos_evidence(self, parameters, parameterization: Literal["spectral", "polytrope"]) -> float:
         """Compute the joint evidence for a parameterized EOS model.
 
         The joint evidence is the product of the evidences from individual events.
@@ -1186,25 +814,40 @@ class JointModelSelector:
 
         Returns
         -------
-            Tuple where the first element is the joint evidence and the second element is an array containing the individual event evidences
+            Evidence of the EOS constructed from the given parameters and parameterization
         """
 
-        per_event_evidences = []
+        interpolator = EOSInterpolator(
+            eos_parameters=np.array(parameters),
+            parameterization=parameterization,
+        )
 
-        for i, model_selector in enumerate(self.model_selectors):
-            per_event_evidences.append(
-                model_selector.compute_parameterized_eos_evidence(parameters, parameterization, self.parameterized_evidence_integral_n_grids[i])
+        per_event_evidences = []
+        for i in range(len(self.density_estimators)):
+            points = self._create_eos_contour(
+                interpolator,
+                self.event_types[i],
+                self.integration_bounds[i],
+                self.mean_mchirps[i],
+                n_grid=self.parameterized_evidence_integral_n_grids[i],
             )
 
+            evidence = self._integrate_eos_contour(points, self.density_estimators[i], self.event_types[i])
+
+            if isinstance(self.density_estimators[i], EnsembleNormalizingFlow):
+                evidence = np.mean(evidence).item()
+
+            per_event_evidences.append(evidence)
+
         joint_evidence = np.prod(per_event_evidences)
-        return float(joint_evidence), np.array(per_event_evidences)
+        return float(joint_evidence)
 
 
 class ParameterizedEoSSampler:
     """Performs MCMC parameter estimation for a parameterized EOS model using ``emcee``.
 
     The sampling likelihood is the joint evidence of the EOS from several provided events,
-    as computed by ``JointModelSelector.compute_parameterized_eos_joint_evidence``.
+    as computed by ``ModelSelector.parameterized_eos_evidence``.
     """
 
     def __init__(
@@ -1214,7 +857,7 @@ class ParameterizedEoSSampler:
         eos_prior_bounds: Sequence[tuple],
         largest_observed_ns_mass: float = 1.97,
         density_est_method: Literal["kde", "flow"] = "kde",
-        flow_files: Sequence[str] | None = None,
+        flow_directories: Sequence[str] | None = None,
         parameterization: Literal["spectral", "polytrope"] = "spectral",
         integration_bounds: Sequence[tuple[float, float]] | Sequence[Sequence[tuple[float, float]]] | None = None,
     ):
@@ -1256,7 +899,7 @@ class ParameterizedEoSSampler:
             - "kde" : (default) Gaussian kernel density estimator from Scipy, wrapped with gwxtreme.density_estimation.BoundedKDE
             - "flow" : Set of normalizing flow PyTorch/Zuko models, trained on event data identically and only differing due to random weight initializations. This approach is designed to support a reproducible alternative to the Bayesian flow approach, with uncertainty estimation coming from the variance in density estimates from the ensemble of models. If chosen, ``flow-files`` must be passed.
 
-        flow_files
+        flow_directories
             If ``density_est_method`` is "flow", provide a list of paths (1 per event) to directories containing the ensembles of PyTorch/Zuko-based Normalizing Flow models in the form of .onnx files (1 per model).
 
         parameterization
@@ -1278,11 +921,11 @@ class ParameterizedEoSSampler:
         self.parameterization = parameterization
         self.largest_observed_ns_mass = largest_observed_ns_mass
 
-        self.joint_selector = JointModelSelector(
+        self.joint_selector = ModelSelector(
             posterior_files=posterior_files,
             event_types=event_types,
             density_est_method=density_est_method,
-            flow_files=flow_files,
+            flow_directories=flow_directories,
             integration_bounds=integration_bounds,
         )
 
@@ -1295,7 +938,7 @@ class ParameterizedEoSSampler:
         causality, thermodynamic stability, and observational consistency with
         the most massive observed neutron star) then the log likelihood given by
         this function is simply the log of the multi-event joint evidence for the EOS
-        as computed by ``JointModelSelector.compute_parameterized_eos_joint_evidence``.
+        as computed by ``ModelSelector.parameterized_eos_evidence``.
 
         If the EOS is not valid, returns -inf.
 
@@ -1318,7 +961,7 @@ class ParameterizedEoSSampler:
             return -np.inf
 
         try:
-            joint_evidence, _ = self.joint_selector.compute_parameterized_eos_joint_evidence(parameters, self.parameterization)
+            joint_evidence = self.joint_selector.parameterized_eos_evidence(parameters, self.parameterization)
         except RuntimeError as e:
             logger.error(f"RuntimeError in _log_post({parameters}): {e}")
             return -np.inf
@@ -1508,3 +1151,102 @@ def load_samples(
     thin = max(thin, 1)
 
     return reader.get_chain(flat=True, discard=burn_in, thin=thin)
+
+
+def get_posterior_samples(posterior_file: str, event_type: str) -> dict:
+    """Convenience utility to read a posterior file and return
+    a stacked array containing the necessary parameter samples
+    for GWXtreme inference based on the variant of the approximation
+    specified by ``cbc_dim``.
+
+    Parameters
+    ----------
+    posterior_file
+        Required contents and/or keys depend on given ``event_type``.
+        If ``event_type`` is "gw-2d", the file must include:
+
+            q, mc_source, lambdat
+
+            Possible alternative names:
+            mass_ratio, chirp_mass_source, lambda_tilde
+
+            Must be in one of these formats: .h5/.hdf5, .json, .dat
+
+        If ``event_type`` is "gw-3d" or "gw-4d", the file must include:
+
+            q, mc_source, lambda_1, lambda_2
+
+            Possible alternative names:
+            mass_ratio, chirp_mass_source, lambda1, lambda2
+
+            Must be in one of these formats: .h5/.hdf5, .json, .dat
+
+        If ``event_type`` is "psr", the file must be a text file
+        containing two columns: mass in solar masses
+        and compactness.
+
+    event_type
+        "gw-2d", "gw-3d", "gw-4d", or "psr"
+
+    Returns
+    -------
+        Contents of returned dict depend on ``event_type``:
+        "gw-2d": {"q": ..., "lambdat": ...}
+        "gw-3d" or "gw-4d": {"q": ..., "mchirp": ..., "lambda1": ..., "lambda2": ...}
+        "psr": {"mass": ..., "radius": ...}
+    """
+
+    if event_type == "psr":
+        samples = np.loadtxt(posterior_file, dtype=np.float32)
+
+        # Convert compactness to radius in km
+        mass_in_sm, compactness = samples[:, 0], samples[:, 1]
+        mass_in_kg = lal.MSUN_SI * mass_in_sm
+        radius_in_km = (lal.G_SI * mass_in_kg / (lal.C_SI**2 * compactness)) / 1000
+
+        return {"mass": mass_in_sm, "radius": radius_in_km}
+
+    else:
+        ext = pathlib.Path(posterior_file).suffix
+
+        if ext == ".h5" or ext == ".hdf5":
+            with h5py.File(posterior_file) as f:
+                samples = np.array(f["posterior_samples"])
+
+        elif ext == ".json":
+            with open(posterior_file) as f:
+                samples = json.load(f)["posterior"]["content"]
+
+        elif ext == ".dat":
+            samples = np.genfromtxt(posterior_file, names=True)
+
+        try:
+            q = np.array(samples["q"])
+        except KeyError:
+            q = np.array(samples["mass_ratio"])
+
+        try:
+            mchirp = np.array(samples["mc_source"])
+        except KeyError:
+            mchirp = np.array(samples["chirp_mass_source"])
+
+        if event_type == "gw-2d":
+            try:
+                lambdat = np.array(samples["lambdat"])
+            except KeyError:
+                lambdat = np.array(samples["lambda_tilde"])
+
+            return {"q": q, "lambdat": lambdat, "mchirp": mchirp}
+
+        elif event_type in ["gw-3d", "gw-4d"]:
+            try:
+                lambda1 = np.array(samples["lambda_1"])
+                lambda2 = np.array(samples["lambda_2"])
+            except KeyError:
+                lambda1 = np.array(samples["lambda1"])
+                lambda2 = np.array(samples["lambda2"])
+
+            return {"q": q, "lambda1": lambda1, "lambda2": lambda2, "mchirp": mchirp}
+
+        else:
+            raise NotImplementedError()

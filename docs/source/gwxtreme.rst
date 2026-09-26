@@ -29,19 +29,3 @@ gwxtreme.density\_estimation
    :members:
    :show-inheritance:
    :undoc-members:
-
-gwxtreme.utils
---------------
-
-.. automodule:: gwxtreme.utils
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-gwxtreme.usage\_scripts
------------------------
-
-.. automodule:: gwxtreme.usage_scripts
-   :members:
-   :show-inheritance:
-   :undoc-members:
